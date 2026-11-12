@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BP Log</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="BP Log">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f2f2f0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0e0e0d" media="(prefers-color-scheme: dark)">
+<style>
+:root{
+  color-scheme:light dark;
+  --bg:#f2f2f0; --card:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#7b7a75; --line:#e3e2de; --grid:#e8e7e3;
+  --sys:#2a78d6; --dia:#eb6834; --accent:#2a78d6; --accent-ink:#fff; --danger:#c62828;
+}
+@media (prefers-color-scheme: dark){
+  :root{--bg:#0e0e0d; --card:#1a1a19; --ink:#f0efec; --ink2:#c3c2b7; --muted:#97968f; --line:#2f2f2d; --grid:#2a2a28;
+    --sys:#3987e5; --dia:#d95926; --accent:#3987e5; --danger:#ef6b6b;}
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,Roboto,sans-serif}
+body{padding:calc(env(safe-area-inset-top) + 8px) 12px calc(86px + env(safe-area-inset-bottom));max-width:760px;margin:0 auto}
+h1{font-size:26px;margin:8px 4px 12px;letter-spacing:-.3px}
+h2{font-size:15px;margin:0 0 8px;color:var(--ink2);font-weight:600;text-transform:uppercase;letter-spacing:.4px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+.tab{display:none}.tab.on{display:block}
+nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--card);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:5}
+nav button{flex:1;background:none;border:0;color:var(--muted);font:600 11px/1.2 inherit;padding:6px 0;display:flex;flex-direction:column;align-items:center;gap:3px}
+nav button svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+nav button.on{color:var(--accent)}
+input,select,textarea,button{font:inherit}
+input:not([type=file]),select,textarea{
+  width:100%;font-size:17px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);min-width:0}
+textarea{min-height:70px;resize:vertical}
+label.f{display:block;font-size:13px;color:var(--ink2);margin:10px 0 4px}
+.btn{background:var(--accent);color:var(--accent-ink);border:0;border-radius:12px;padding:13px 16px;font-weight:600;font-size:17px;width:100%}
+.btn.sec{background:var(--bg);color:var(--ink);border:1px solid var(--line)}
+.btn.danger{background:var(--bg);color:var(--danger);border:1px solid var(--line)}
+.btn.sm{padding:8px 12px;font-size:15px;width:auto}
+.row{display:flex;gap:8px;align-items:center}
+.rd{display:grid;grid-template-columns:22px minmax(0,1fr) 10px minmax(0,1fr) minmax(0,1fr);gap:6px;align-items:center;margin-bottom:8px}
+.rd .lab{color:var(--muted);font-weight:600;text-align:center}
+.rd span.sl{text-align:center;color:var(--muted)}
+.rd input{text-align:center}
+.pill{display:flex;gap:6px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:var(--bg);color:var(--ink2);border-radius:999px;padding:7px 12px;font-size:14px;font-weight:600}
+.chip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.seg{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{flex:1;background:none;border:0;padding:8px 0;color:var(--ink2);font-weight:600;font-size:14px}
+.seg button.on{background:var(--accent);color:var(--accent-ink)}
+.big{font-size:34px;font-weight:700;letter-spacing:-1px;line-height:1.1}
+.big small{font-size:15px;font-weight:500;color:var(--muted);letter-spacing:0;margin-left:4px}
+.muted{color:var(--muted)}.sm{font-size:13px}
+.k{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:baseline}
+.k.sys{background:var(--sys)}.k.dia{background:var(--dia)}
+.chart{position:relative;margin:10px -4px 0}
+.chart svg{display:block;width:100%;height:auto;touch-action:pan-y;user-select:none;-webkit-user-select:none}
+.tip{position:absolute;top:2px;left:0;pointer-events:none;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:7px 9px;font-size:13px;line-height:1.35;box-shadow:0 2px 10px rgba(0,0,0,.15);display:none;min-width:150px;z-index:2}
+.empty{padding:36px 8px;text-align:center;color:var(--muted)}
+.trend{display:grid;gap:6px;margin-top:10px}
+.trend .t{border-top:1px solid var(--line);padding-top:8px}
+.day{border-top:1px solid var(--line);padding:10px 0}
+.day:first-child{border-top:0}
+.day .h{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.rs{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.rs button{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:5px 9px;color:var(--ink);font-size:14px}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:right;padding:6px 6px;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--ink2);font-weight:600;font-size:12px}
+.scroll{max-height:320px;overflow:auto}
+.bar{height:8px;border-radius:4px;background:var(--grid);overflow:hidden;min-width:60px}.bar i{display:block;height:100%;background:var(--ink2)}
+.kv{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.kv .c{background:var(--bg);border-radius:10px;padding:10px}
+.kv .c .n{font-size:22px;font-weight:700;letter-spacing:-.5px}
+.kv .c .l{font-size:12px;color:var(--ink2)}
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-end;justify-content:center;z-index:20}
+#modal .sheet{background:var(--card);border-radius:18px 18px 0 0;padding:16px 16px calc(18px + env(safe-area-inset-bottom));width:100%;max-width:760px;max-height:90vh;overflow:auto}
+#toast{position:fixed;left:50%;bottom:calc(90px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#222;color:#fff;border-radius:999px;padding:9px 16px;font-size:14px;display:none;z-index:30}
+details summary{cursor:pointer;color:var(--ink2);font-weight:600;padding:6px 0}
+.ev{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid var(--line)}
+.report h3{font-size:14px;margin:16px 0 6px;color:var(--ink2);text-transform:uppercase;letter-spacing:.4px}
+.report .title{font-size:22px;font-weight:700}
+/* chart parts */
+.ax{stroke:var(--grid)}.tx{fill:var(--ink2);font-size:11px}
+.gl{stroke:var(--grid);stroke-width:1}
+@media print{
+  :root{--bg:#fff;--card:#fff;--ink:#111;--ink2:#444;--muted:#666;--line:#ddd;--grid:#e6e6e6;--sys:#2a78d6;--dia:#eb6834}
+  nav,#toast,.noprint,.tab:not(#tab-report),h1{display:none!important}
+  #tab-report{display:block!important}
+  body{padding:0;max-width:none}
+  .card{border:0;padding:0}
+}
+</style>
+</head>
+<body>
+
+<!-- LOG -->
+<section class="tab on" id="tab-log">
+  <h1>Blood Pressure</h1>
+  <div class="card" id="today"></div>
+  <div class="card">
+    <h2>New session</h2>
+    <label class="f" for="when">Time of first reading</label>
+    <input type="datetime-local" id="when">
+    <label class="f">Readings (systolic / diastolic / pulse)</label>
+    <div id="rows">
+      <div class="rd"><span class="lab">1</span><input inputmode="numeric" pattern="[0-9]*" maxlength="3" placeholder="SYS" aria-label="Reading 1 systolic"><span class="sl">/</span><input inputmode="numeric" pattern="[0-9]*" maxlength="3" placeholder="DIA" aria-label="Reading 1 diastolic"><input inputmode="numeric" pattern="[0-9]*" maxlength="3" placeholder="Pulse" aria-label="Reading 1 pulse"></div>
+      <div class="rd"><span class="lab">2</span><input inputmode="numeric" pattern="[0-9]*" maxlength="3" placeholder="SYS" aria-label="Reading 2 systolic"><span class="sl">/</span><input inputmode="numeric" pattern="[0-9]*" maxlength="3" placeholder="DIA" aria-label="Reading 2 diastolic"><input inputmode="numeric" pattern="[0-9]*" maxlength="3" placeholder="Pulse" aria-label="Reading 2 pulse"></div>
+      <div class="rd"><span class="lab">3</span><input inputmode="numeric" pattern="[0-9]*" maxlength="3" placeholder="SYS" aria-label="Reading 3 systolic"><span class="sl">/</span><input inputmode="numeric" pattern="[0-9]*" maxlength="3" placeholder="DIA" aria-label="Reading 3 diastolic"><input inputmode="numeric" pattern="[0-9]*" maxlength="3" placeholder="Pulse" aria-label="Reading 3 pulse"></div>
+    </div>
+    <div id="preview" class="muted sm" style="min-height:20px;margin:2px 2px 8px"></div>
+    <label class="f" for="note">Note (optional)</label>
+    <input type="text" id="note" placeholder="e.g. after coffee, missed medication, stressed">
+    <div style="height:12px"></div>
+    <button class="btn" id="save">Save readings</button>
+  </div>
+  <div class="card"><h2>Recent days</h2><div id="recent"></div></div>
+</section>
+
+<!-- CHART -->
+<section class="tab" id="tab-chart">
+  <h1>Trend</h1>
+  <div class="card">
+    <div class="seg" id="rangeSeg">
+      <button data-r="30">30d</button><button data-r="90">90d</button><button data-r="180">6mo</button><button data-r="365">1yr</button><button data-r="0">All</button>
+    </div>
+    <div class="pill" style="margin-top:10px" id="chips">
+      <button class="chip" data-s="all">· All readings</button>
+      <button class="chip" data-s="avg">● Daily average</button>
+      <button class="chip" data-s="low">◆ Daily lowest</button>
+      <button class="chip" data-s="trend">╌ Trendline</button>
+    </div>
+    <div class="sm muted" style="margin-top:10px"><span class="k sys"></span>Systolic (top) &nbsp; <span class="k dia"></span>Diastolic (bottom) &nbsp; mmHg</div>
+    <div class="chart" id="chart"></div>
+    <div class="trend" id="trendBox"></div>
+    <details style="margin-top:10px"><summary>Data table</summary><div class="scroll" id="chartTable"></div></details>
+  </div>
+</section>
+
+<!-- REPORT -->
+<section class="tab" id="tab-report">
+  <h1>Doctor report</h1>
+  <div class="card noprint">
+    <div class="seg" id="rrangeSeg">
+      <button data-r="30">30d</button><button data-r="90">90d</button><button data-r="180">6mo</button><button data-r="365">1yr</button><button data-r="0">All</button>
+    </div>
+    <div style="height:10px"></div>
+    <button class="btn" id="printBtn">Print / Save as PDF</button>
+    <div class="sm muted" style="margin-top:6px">On iPhone: tap the button, then use the share icon → Save to Files, or show this screen to your doctor.</div>
+  </div>
+  <div class="card report" id="report"></div>
+</section>
+
+<!-- HISTORY -->
+<section class="tab" id="tab-history">
+  <h1>History</h1>
+  <div class="card"><div id="hist"></div><button class="btn sec" id="moreHist" style="margin-top:8px;display:none">Show more</button></div>
+</section>
+
+<!-- SETTINGS -->
+<section class="tab" id="tab-settings">
+  <h1>Settings & data</h1>
+  <div class="card">
+    <h2>Daily BP value</h2>
+    <div class="seg" id="methodSeg"><button data-m="avg">Average of readings</button><button data-m="low">Lowest reading</button></div>
+    <div class="sm muted" style="margin-top:8px">Used for the daily value on the Log tab, History, and the Doctor report. "Lowest" uses the reading with the lowest systolic and its matching diastolic. The Trend chart can show both at once.</div>
+  </div>
+  <div class="card">
+    <h2>Targets &amp; report info</h2>
+    <div class="row"><div style="flex:1"><label class="f">Target systolic</label><input type="number" inputmode="numeric" id="tSys"></div><div style="flex:1"><label class="f">Target diastolic</label><input type="number" inputmode="numeric" id="tDia"></div></div>
+    <label class="f">Name (shown on report)</label><input type="text" id="pname">
+    <label class="f">Medications / notes for your doctor (shown on report)</label><textarea id="pnotes" placeholder="e.g. Lisinopril 10 mg each morning"></textarea>
+  </div>
+  <div class="card">
+    <h2>Events on the chart</h2>
+    <div class="sm muted" style="margin-bottom:6px">Mark medication changes, illness, travel etc. They appear as numbered flags on the chart and on the report.</div>
+    <div class="row"><input type="date" id="evDate" style="flex:0 0 150px"><input type="text" id="evText" placeholder="Started new medication"><button class="btn sm" id="evAdd">Add</button></div>
+    <div id="evList" style="margin-top:8px"></div>
+  </div>
+  <div class="card">
+    <h2>Import</h2>
+    <div class="sm muted" style="margin-bottom:8px">CSV or pasted Excel rows. Columns: <b>Date</b> then either <b>Sys, Dia, Pulse</b> (one reading per row) or <b>Sys1, Dia1, Sys2, Dia2, Sys3, Dia3</b>. A header row is detected automatically. Dates like 3/14/2025 or 2025-03-14 both work.</div>
+    <input type="file" id="impFile" accept=".csv,.txt,.tsv,text/csv,text/plain" style="display:none">
+    <button class="btn sec" id="impBtn">Choose CSV file…</button>
+    <details style="margin-top:8px"><summary>…or paste rows from Excel</summary>
+      <textarea id="impText" style="min-height:120px" placeholder="Date, Sys1, Dia1, Sys2, Dia2, Sys3, Dia3"></textarea>
+      <button class="btn sec" id="impPaste" style="margin-top:8px">Preview import</button>
+    </details>
+  </div>
+  <div class="card">
+    <h2>Export &amp; backup</h2>
+    <div class="sm muted" id="bk" style="margin-bottom:8px"></div>
+    <div class="pill" style="flex-direction:column">
+      <button class="btn sec" id="exCsv">Export all readings (CSV)</button>
+      <button class="btn sec" id="exDaily">Export daily summary (CSV)</button>
+      <button class="btn sec" id="exJson">Backup everything (JSON)</button>
+      <input type="file" id="rsFile" accept=".json,application/json" style="display:none">
+      <button class="btn sec" id="rsBtn">Restore from backup…</button>
+      <button class="btn danger" id="wipe">Delete all data…</button>
+    </div>
+    <div class="sm muted" style="margin-top:10px">Your data lives only in this browser on this device — it is never uploaded anywhere. Back up now and then, especially before changing phones.</div>
+  </div>
+</section>
+
+<nav>
+  <button data-t="log" class="on"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>Log</button>
+  <button data-t="chart"><svg viewBox="0 0 24 24"><path d="M3 17l5-6 4 3 5-8 4 5"/><path d="M3 21h18"/></svg>Trend</button>
+  <button data-t="report"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h7"/></svg>Report</button>
+  <button data-t="history"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>History</button>
+  <button data-t="settings"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>Settings</button>
+</nav>
+<div id="modal"><div class="sheet" id="sheet"></div></div>
+<div id="toast"></div>
+
+<script>
+'use strict';
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const DAY=864e5, p2=n=>String(n).padStart(2,'0');
+const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const K={r:'bp.v1.readings',s:'bp.v1.settings',e:'bp.v1.events'};
+const ld=(k,d)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch{return d}};
+const sv=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{toast('Could not save – browser storage is blocked or full')}};
+let readings=ld(K.r,[]), events=ld(K.e,[]);
+let S=Object.assign({method:'avg',tSys:130,tDia:80,name:'',notes:'',range:90,rrange:90,lastBackup:0},ld(K.s,{}));
+S.show=Object.assign({all:true,avg:true,low:false,trend:true},S.show||{});
+const saveS=()=>sv(K.s,S), saveR=()=>sv(K.r,readings), saveE=()=>sv(K.e,events);
+const uid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36);
+
+/* ---------- date helpers ---------- */
+const dkey=t=>{const d=new Date(t);return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate())};
+const startDay=t=>{const d=new Date(t);d.setHours(0,0,0,0);return d.getTime()};
+const dtLocal=t=>{const d=new Date(t);return dkey(t)+'T'+p2(d.getHours())+':'+p2(d.getMinutes())};
+const fmtD=(t,y)=>{const d=new Date(t);return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]+', '+MON[d.getMonth()]+' '+d.getDate()+(y?', '+d.getFullYear():'')};
+const fmtT=t=>{const d=new Date(t);let h=d.getHours();const ap=h>=12?'PM':'AM';h=h%12||12;return h+':'+p2(d.getMinutes())+' '+ap};
+const fmtShort=t=>{const d=new Date(t);return MON[d.getMonth()]+' '+d.getDate()};
+function keyToT(k){const [y,m,d]=k.split('-').map(Number);return new Date(y,m-1,d).getTime()}
+
+/* ---------- stats ---------- */
+const mean=a=>a.reduce((x,y)=>x+y,0)/a.length;
+const R=n=>Math.round(n);
+function buildDays(){
+  const m=new Map();
+  for(const r of readings){const k=dkey(r.t);if(!m.has(k))m.set(k,[]);m.get(k).push(r)}
+  return [...m.entries()].sort((a,b)=>a[0]<b[0]?-1:1).map(([k,rs])=>{
+    rs.sort((a,b)=>a.t-b.t);
+    const t0=keyToT(k);
+    const low=rs.reduce((a,b)=>(b.s<a.s||(b.s===a.s&&b.d<a.d))?b:a);
+    const ps=rs.filter(r=>r.p).map(r=>r.p);
+    return {k,t0,x:t0+DAY/2,rs,avg:{s:mean(rs.map(r=>r.s)),d:mean(rs.map(r=>r.d))},low:{s:low.s,d:low.d},pulse:ps.length?mean(ps):null};
+  });
+}
+let DAYS=[];
+const val=(day,m=S.method)=>m==='low'?day.low:day.avg;
+function regress(pts){
+  const n=pts.length;if(n<2)return null;
+  const xs=pts.map(p=>p.x/DAY),ys=pts.map(p=>p.y),mx=mean(xs),my=mean(ys);let sxx=0,sxy=0;
+  for(let i=0;i<n;i++){sxx+=(xs[i]-mx)**2;sxy+=(xs[i]-mx)*(ys[i]-my)}
+  if(!sxx)return null;const b=sxy/sxx;return {b,a:my-b*mx};
+}
+const dirOf=ch=>ch>=3?{ic:'↑',tx:'Rising'}:ch<=-3?{ic:'↓',tx:'Falling'}:{ic:'→',tx:'Steady'};
+const sgn=n=>(n>0?'+':n<0?'−':'')+Math.abs(n).toFixed(1);
+function trendOf(vis,show){
+  let kind;
+  if(show.avg||show.low) kind=(show.avg&&show.low)?S.method:(show.avg?'avg':'low');
+  else if(show.all) kind='all'; else kind=S.method;
+  let pts;
+  if(kind==='all') pts=vis.flatMap(d=>d.rs.map(r=>({x:d.x,s:r.s,d:r.d})));
+  else pts=vis.map(d=>({x:d.x,s:val(d,kind).s,d:val(d,kind).d}));
+  const label={avg:'daily average',low:'daily lowest',all:'all readings'}[kind];
+  const span=pts.length?(Math.max(...pts.map(p=>p.x))-Math.min(...pts.map(p=>p.x)))/DAY:0;
+  const ok=vis.length>=7&&span>=14;
+  const rs=regress(pts.map(p=>({x:p.x,y:p.s}))), rd=regress(pts.map(p=>({x:p.x,y:p.d})));
+  return {kind,label,pts,span,ok:ok&&!!rs&&!!rd,rs,rd,days:vis.length};
+}
+function trendHTML(t){
+  if(!t.ok) return '<div class="sm muted">Not enough data for a trend yet — needs at least a week of days spanning two weeks or more in this period.</div>';
+  const row=(n,cls,r)=>{const b30=r.b*30,dir=dirOf(r.b*t.span);return `<div class="t"><div><span class="k ${cls}"></span>${n} &nbsp;<b>${dir.ic} ${dir.tx}</b></div><div class="muted sm">${sgn(b30)} mmHg per 30 days · ${sgn(r.b*t.span)} over ${R(t.span)} days</div></div>`};
+  return row('Systolic','sys',t.rs)+row('Diastolic','dia',t.rd)+`<div class="sm muted">Linear trend of ${t.label} · ${t.days} days. “Steady” = less than 3 mmHg total change across the period.</div>`;
+}
+
+/* ---------- chart ---------- */
+function drawChart(host,o){
+  const ds=DAYS;
+  const W=Math.max(300,Math.round(o.width||host.clientWidth||340)), H=o.height||(W<520?290:330);
+  const m={l:34,r:34,t:16,b:26};
+  const end=startDay(Date.now())+DAY;
+  const from=o.range>0?end-o.range*DAY:(ds.length?ds[0].t0:end-30*DAY);
+  const vis=ds.filter(d=>d.t0>=from);
+  if(!vis.length){host.innerHTML='<div class="empty">No readings in this period.</div>';return null}
+  const show=o.show;
+  const useAll=show.all, useAvg=show.avg, useLow=show.low;
+  let vals=[];
+  const anyDaily=useAvg||useLow;
+  if(useAll) vis.forEach(d=>d.rs.forEach(r=>vals.push(r.s,r.d)));
+  if(useAvg) vis.forEach(d=>vals.push(d.avg.s,d.avg.d));
+  if(useLow) vis.forEach(d=>vals.push(d.low.s,d.low.d));
+  if(!vals.length) vis.forEach(d=>vals.push(d.avg.s,d.avg.d));
+  let ymin=Math.floor((Math.min(...vals)-6)/10)*10, ymax=Math.ceil((Math.max(...vals)+6)/10)*10;
+  const step=(ymax-ymin)>90?20:10; ymin=Math.floor(ymin/step)*step; ymax=Math.ceil(ymax/step)*step;
+  const X=t=>m.l+(t-from)/(end-from)*(W-m.l-m.r), Y=v=>m.t+(1-(v-ymin)/(ymax-ymin))*(H-m.t-m.b);
+  let g='';
+  for(let v=ymin;v<=ymax;v+=step) g+=`<line class="gl" x1="${m.l}" x2="${W-m.r}" y1="${Y(v)}" y2="${Y(v)}"/><text class="tx" x="${m.l-6}" y="${Y(v)+4}" text-anchor="end">${v}</text>`;
+  // x ticks
+  const spanD=(end-from)/DAY; let ticks=[];
+  if(spanD>100){
+    const d0=new Date(from);let c=new Date(d0.getFullYear(),d0.getMonth()+(d0.getDate()>1?1:0),1),arr=[];
+    while(c.getTime()<end){arr.push(c.getTime());c=new Date(c.getFullYear(),c.getMonth()+1,1)}
+    const st=Math.max(1,Math.ceil(arr.length/(W<420?4:7)));
+    ticks=arr.filter((_,i)=>i%st===0).map(t=>({t,l:MON[new Date(t).getMonth()]+(spanD>330?" '"+String(new Date(t).getFullYear()).slice(2):'')}));
+  } else {
+    const n=W<420?4:6;for(let i=0;i<=n;i++){const t=from+i*(end-from)/n;ticks.push({t,l:fmtShort(Math.min(t,end-1))})}
+  }
+  ticks.forEach((tk,i)=>{const x=X(tk.t);const an=(i===0&&x<m.l+16)?'start':(x>W-m.r-18?'end':'middle');
+    g+=`<line class="gl" x1="${x}" x2="${x}" y1="${H-m.b}" y2="${H-m.b+4}"/><text class="tx" x="${x}" y="${H-8}" text-anchor="${an}">${tk.l}</text>`});
+  // targets
+  [[S.tSys,'sys'],[S.tDia,'dia']].forEach(([v,c])=>{if(v>ymin&&v<ymax)g+=`<line x1="${m.l}" x2="${W-m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--${c})" stroke-opacity=".55" stroke-width="1" stroke-dasharray="2 4"/>`});
+  // events
+  const evs=events.slice().sort((a,b)=>a.date<b.date?-1:1);
+  evs.forEach((e,i)=>{const t=keyToT(e.date)+DAY/2;if(t<from||t>end)return;const x=X(t);
+    g+=`<line x1="${x}" x2="${x}" y1="${m.t+8}" y2="${H-m.b}" stroke="var(--muted)" stroke-width="1" stroke-dasharray="1 3"/><circle cx="${x}" cy="${m.t+4}" r="7.5" fill="var(--ink2)"/><text x="${x}" y="${m.t+7.5}" text-anchor="middle" font-size="10" font-weight="700" fill="var(--card)">${i+1}</text>`});
+  const many=vis.length>45, mr=many?0:3.5;
+  const poly=(pts,key,dash,w)=>`<polyline fill="none" stroke="var(--${key==='s'?'sys':'dia'})" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round" ${dash?`stroke-dasharray="${dash}"`:''} points="${pts.map(p=>X(p.x).toFixed(1)+','+Y(p[key]).toFixed(1)).join(' ')}"/>`;
+  if(useAll){ vis.forEach(d=>d.rs.forEach(r=>{g+=`<circle cx="${X(d.x).toFixed(1)}" cy="${Y(r.s).toFixed(1)}" r="${many?1.8:2.6}" fill="var(--sys)" fill-opacity=".38"/><circle cx="${X(d.x).toFixed(1)}" cy="${Y(r.d).toFixed(1)}" r="${many?1.8:2.6}" fill="var(--dia)" fill-opacity=".38"/>`})) }
+  const dpts=k=>vis.map(d=>({x:d.x,s:d[k].s,d:d[k].d}));
+  if(useLow){const p=dpts('low');g+=poly(p,'s','1 5',2)+poly(p,'d','1 5',2);
+    if(!many)p.forEach(q=>['s','d'].forEach(c=>{const x=X(q.x),y=Y(q[c]);g+=`<path d="M${x} ${y-4.5}l4.5 4.5l-4.5 4.5l-4.5-4.5z" fill="var(--${c==='s'?'sys':'dia'})" stroke="var(--card)" stroke-width="1.5"/>`}))}
+  if(useAvg){const p=dpts('avg');g+=poly(p,'s',null,2)+poly(p,'d',null,2);
+    if(!many)p.forEach(q=>['s','d'].forEach(c=>{g+=`<circle cx="${X(q.x)}" cy="${Y(q[c])}" r="${mr}" fill="var(--${c==='s'?'sys':'dia'})" stroke="var(--card)" stroke-width="2"/>`}))}
+  // trend
+  const tr=trendOf(vis,show);
+  if(show.trend&&tr.ok){
+    const xs=tr.pts.map(p=>p.x),x0=Math.min(...xs),x1=Math.max(...xs);
+    [['s',tr.rs],['d',tr.rd]].forEach(([c,r])=>{const y0=r.a+r.b*x0/DAY,y1=r.a+r.b*x1/DAY;
+      g+=`<line x1="${X(x0)}" y1="${Y(y0)}" x2="${X(x1)}" y2="${Y(y1)}" stroke="var(--card)" stroke-width="5" stroke-linecap="round"/><line x1="${X(x0)}" y1="${Y(y0)}" x2="${X(x1)}" y2="${Y(y1)}" stroke="var(--${c==='s'?'sys':'dia'})" stroke-width="2.5" stroke-dasharray="7 5" stroke-linecap="round"/>`});
+  }
+  // end labels
+  const last=vis[vis.length-1], lk=(useAvg||!anyDaily)?'avg':'low';
+  const lv=useAll&&!anyDaily?null:last[lk];
+  if(lv){g+=`<text class="tx" x="${W-m.r+5}" y="${Y(lv.s)+4}" fill="var(--ink2)">SYS</text><text class="tx" x="${W-m.r+5}" y="${Y(lv.d)+4}">DIA</text>`}
+  else if(useAll){const r=last.rs[last.rs.length-1];g+=`<text class="tx" x="${W-m.r+5}" y="${Y(r.s)+4}">SYS</text><text class="tx" x="${W-m.r+5}" y="${Y(r.d)+4}">DIA</text>`}
+  const hov=`<g id="hov" style="display:none"><line id="hl" y1="${m.t}" y2="${H-m.b}" stroke="var(--ink2)" stroke-width="1"/></g><rect id="hit" x="${m.l}" y="0" width="${W-m.l-m.r}" height="${H}" fill="transparent"/>`;
+  host.innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Blood pressure chart, ${vis.length} days">${g}${hov}</svg><div class="tip"></div>`;
+  if(o.interactive!==false){
+    const svg=$('svg',host),tip=$('.tip',host),hl=$('#hl',host),hv=$('#hov',host);
+    const move=ev=>{
+      const rc=svg.getBoundingClientRect(),px=(ev.clientX-rc.left)*(W/rc.width);
+      let best=vis[0],bd=1e18;for(const d of vis){const dd=Math.abs(X(d.x)-px);if(dd<bd){bd=dd;best=d}}
+      const x=X(best.x);hv.style.display='';hl.setAttribute('x1',x);hl.setAttribute('x2',x);
+      const ev2=evs.map((e,i)=>({e,i})).filter(o=>o.e.date===best.k).map(o=>`<div>⚑ ${o.i+1}: ${esc(o.e.text)}</div>`).join('');
+      tip.innerHTML=`<b>${fmtD(best.t0,true)}</b><div>${best.rs.map(r=>r.s+'/'+r.d).join(' · ')}</div><div><span class="muted">Avg</span> ${R(best.avg.s)}/${R(best.avg.d)} &nbsp;<span class="muted">Lowest</span> ${best.low.s}/${best.low.d}</div>${ev2}`;
+      tip.style.display='block';const tw=tip.offsetWidth,sx=x*(rc.width/W);
+      tip.style.left=Math.max(0,Math.min(rc.width-tw,sx-tw/2))+'px';
+    };
+    const hit=$('#hit',host);
+    hit.addEventListener('pointerdown',move);hit.addEventListener('pointermove',move);
+    hit.addEventListener('pointerleave',()=>{tip.style.display='none';hv.style.display='none'});
+    document.addEventListener('pointerdown',function f(e){if(!host.isConnected){document.removeEventListener('pointerdown',f);return}if(!host.contains(e.target)){tip.style.display='none';hv.style.display='none'}});
+  }
+  return {vis,trend:tr,from,end};
+}
+
+/* ---------- tabs ---------- */
+let curTab='log';
+function showTab(t){
+  curTab=t;$$('.tab').forEach(s=>s.classList.toggle('on',s.id==='tab-'+t));
+  $$('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
+  window.scrollTo(0,0);renderTab();
+}
+$$('nav button').forEach(b=>b.onclick=()=>showTab(b.dataset.t));
+function renderTab(){
+  if(curTab==='log'){renderToday();renderRecent()}
+  if(curTab==='chart')renderChartTab();
+  if(curTab==='report')renderReport();
+  if(curTab==='history')renderHistory();
+  if(curTab==='settings')renderSettings();
+}
+function refresh(){DAYS=buildDays();renderTab()}
+
+/* ---------- Log tab ---------- */
+const rowEls=()=>$$('#rows .rd').map(r=>{const i=$$('input',r);return {s:i[0],d:i[1],p:i[2]}});
+function setNow(){$('#when').value=dtLocal(Date.now())}
+function methodName(){return S.method==='low'?'Lowest reading':'Average'}
+function renderToday(){
+  const td=DAYS.find(d=>d.k===dkey(Date.now()));
+  const el=$('#today');
+  if(!td){const l=DAYS[DAYS.length-1];
+    el.innerHTML=`<h2>Today</h2><div class="muted">No readings yet today.</div>`+(l?`<div class="sm muted" style="margin-top:6px">Last: ${fmtD(l.t0)} — ${R(val(l).s)}/${R(val(l).d)} (${methodName().toLowerCase()})</div>`:'');return}
+  const v=val(td);
+  el.innerHTML=`<h2>Today · ${methodName()}</h2><div class="big">${R(v.s)}/${R(v.d)}<small>mmHg${td.pulse?' · pulse '+R(td.pulse):''}</small></div><div class="sm muted" style="margin-top:6px">${td.rs.length} reading${td.rs.length>1?'s':''}: ${td.rs.map(r=>r.s+'/'+r.d).join(' · ')}<br>Average ${R(td.avg.s)}/${R(td.avg.d)} · Lowest ${td.low.s}/${td.low.d}</div>`;
+}
+function renderRecent(){
+  const l=DAYS.slice(-7).reverse();
+  $('#recent').innerHTML=l.length?`<table><tr><th>Day</th><th>${methodName()}</th><th>Readings</th></tr>${l.map(d=>`<tr><td>${fmtD(d.t0)}</td><td><b>${R(val(d).s)}/${R(val(d).d)}</b></td><td class="muted">${d.rs.map(r=>r.s+'/'+r.d).join(' · ')}</td></tr>`).join('')}</table>`:'<div class="muted">Nothing logged yet. Enter your first readings above, or import your spreadsheet in Settings.</div>';
+}
+function updatePreview(){
+  const rs=rowEls().map(r=>({s:+r.s.value,d:+r.d.value})).filter(r=>r.s&&r.d);
+  $('#preview').innerHTML=rs.length?`This session: <b>Average ${R(mean(rs.map(r=>r.s)))}/${R(mean(rs.map(r=>r.d)))}</b> · <b>Lowest ${rs.reduce((a,b)=>b.s<a.s?b:a).s}/${rs.reduce((a,b)=>b.s<a.s?b:a).d}</b>`:'';
+}
+$('#rows').addEventListener('input',e=>{
+  e.target.value=e.target.value.replace(/\D/g,'');updatePreview();
+  const all=$$('#rows input');const i=all.indexOf(e.target);
+  if(e.target.value.length===3&&i<all.length-1&&i%3<2)all[i+1].focus();
+});
+$('#save').onclick=()=>{
+  const t0=new Date($('#when').value).getTime();
+  if(isNaN(t0))return toast('Pick a date and time');
+  const rows=rowEls().map(r=>({s:+r.s.value,d:+r.d.value,p:+r.p.value||0,any:r.s.value||r.d.value}));
+  const used=[];
+  for(let i=0;i<3;i++){const r=rows[i];if(!r.any)continue;
+    if(!(r.s>=60&&r.s<=260&&r.d>=30&&r.d<=160)||r.s<=r.d)return toast(`Check reading ${i+1}: values look off`);
+    used.push({i,r})}
+  if(!used.length)return toast('Enter at least one reading');
+  const note=$('#note').value.trim();
+  used.forEach(({i,r})=>readings.push({id:uid(),t:t0+i*5*60000,s:r.s,d:r.d,p:r.p||undefined,n:note&&i===0?note:undefined}));
+  saveR();rowEls().forEach(r=>{r.s.value=r.d.value=r.p.value=''});$('#note').value='';updatePreview();setNow();
+  refresh();toast('Saved '+used.length+' reading'+(used.length>1?'s':''));
+};
+
+/* ---------- Chart tab ---------- */
+function syncChartUI(){
+  $$('#rangeSeg button').forEach(b=>b.classList.toggle('on',+b.dataset.r===S.range));
+  $$('#chips .chip').forEach(c=>c.classList.toggle('on',!!S.show[c.dataset.s]));
+}
+$('#rangeSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.range=+b.dataset.r;saveS();renderChartTab()};
+$('#chips').onclick=e=>{const b=e.target.closest('.chip');if(!b)return;S.show[b.dataset.s]=!S.show[b.dataset.s];saveS();renderChartTab()};
+function renderChartTab(){
+  syncChartUI();
+  const r=drawChart($('#chart'),{range:S.range,show:S.show});
+  $('#trendBox').innerHTML=r?(S.show.trend?trendHTML(r.trend):''):'';
+  const vis=r?r.vis.slice().reverse():[];
+  $('#chartTable').innerHTML=vis.length?`<table><tr><th>Day</th><th>Avg</th><th>Lowest</th><th>Readings</th></tr>${vis.map(d=>`<tr><td>${fmtShort(d.t0)}</td><td>${R(d.avg.s)}/${R(d.avg.d)}</td><td>${d.low.s}/${d.low.d}</td><td class="muted">${d.rs.length}</td></tr>`).join('')}</table>`:'';
+}
+let rzT;window.addEventListener('resize',()=>{clearTimeout(rzT);rzT=setTimeout(()=>{if(curTab==='chart')renderChartTab();if(curTab==='report')renderReport()},150)});
+
+/* ---------- Report ---------- */
+function cat(s,d){
+  if(s>180||d>120)return 'Crisis range (>180 or >120)';
+  if(s>=140||d>=90)return 'Stage 2 (≥140 or ≥90)';
+  if(s>=130||d>=80)return 'Stage 1 (130–139 or 80–89)';
+  if(s>=120)return 'Elevated (120–129 and <80)';
+  return 'Normal (<120 and <80)';
+}
+const CATS=['Normal (<120 and <80)','Elevated (120–129 and <80)','Stage 1 (130–139 or 80–89)','Stage 2 (≥140 or ≥90)','Crisis range (>180 or >120)'];
+function renderReport(){
+  $$('#rrangeSeg button').forEach(b=>b.classList.toggle('on',+b.dataset.r===S.rrange));
+  const el=$('#report');
+  const end=startDay(Date.now())+DAY, from=S.rrange>0?end-S.rrange*DAY:(DAYS[0]?DAYS[0].t0:end);
+  const vis=DAYS.filter(d=>d.t0>=from);
+  if(!vis.length){el.innerHTML='<div class="empty">No readings in this period.</div>';return}
+  const V=vis.map(d=>{const v=val(d);return {s:R(v.s),d:R(v.d)}}), allR=vis.flatMap(d=>d.rs);
+  const per=n=>{const x=vis.filter(d=>d.t0>=end-n*DAY);return x.length?{n:x.length,s:mean(x.map(d=>val(d).s)),d:mean(x.map(d=>val(d).d)),p:(()=>{const q=x.filter(d=>d.pulse);return q.length?mean(q.map(d=>d.pulse)):null})()}:null};
+  const pc=(a,n)=>a.filter(Boolean).length;
+  const atT=V.filter(v=>v.s<=S.tSys&&v.d<=S.tDia).length;
+  const cats=CATS.map(c=>({c,n:V.filter(v=>cat(v.s,v.d)===c).length}));
+  const byM=new Map();vis.forEach(d=>{const k=d.k.slice(0,7);if(!byM.has(k))byM.set(k,[]);byM.get(k).push(d)});
+  const mrows=[...byM.entries()].map(([k,ds])=>{const v=ds.map(d=>val(d));const ps=ds.filter(d=>d.pulse);
+    return `<tr><td>${MON[+k.slice(5)-1]} ${k.slice(0,4)}</td><td>${ds.length}</td><td><b>${R(mean(v.map(x=>x.s)))}/${R(mean(v.map(x=>x.d)))}</b></td><td>${Math.min(...v.map(x=>x.s))}/${Math.min(...v.map(x=>x.d))}</td><td>${Math.max(...v.map(x=>x.s))}/${Math.max(...v.map(x=>x.d))}</td><td>${ps.length?R(mean(ps.map(d=>d.pulse))):'–'}</td></tr>`}).join('');
+  const pv=vis.filter(d=>d.pulse);
+  const per7=per(7),per30=per(30),per90=per(90);
+  const pr=(l,x)=>x?`<div class="c"><div class="l">${l} · ${x.n} day${x.n>1?'s':''} logged</div><div class="n">${R(x.s)}/${R(x.d)}</div></div>`:'';
+  const evs=events.slice().sort((a,b)=>a.date<b.date?-1:1).map((e,i)=>({...e,i})).filter(e=>keyToT(e.date)>=from-DAY);
+  el.innerHTML=`
+   <div class="title">Blood pressure report${S.name?' — '+esc(S.name):''}</div>
+   <div class="muted sm">${fmtD(vis[0].t0,true)} – ${fmtD(vis[vis.length-1].t0,true)} · ${vis.length} days · ${allR.length} readings · generated ${fmtD(Date.now(),true)}</div>
+   <div class="muted sm">Daily value = <b>${S.method==='low'?'lowest reading of the day':'average of the day’s readings'}</b>. Home readings, mmHg.</div>
+   <h3>Summary</h3>
+   <div class="kv">
+     <div class="c"><div class="l">Mean daily BP</div><div class="n">${R(mean(V.map(v=>v.s)))}/${R(mean(V.map(v=>v.d)))}</div></div>
+     <div class="c"><div class="l">Days at/below target ${S.tSys}/${S.tDia}</div><div class="n">${R(atT/V.length*100)}%</div></div>
+     <div class="c"><div class="l">Lowest daily</div><div class="n">${Math.min(...V.map(v=>v.s))}/${Math.min(...V.map(v=>v.d))}</div></div>
+     <div class="c"><div class="l">Highest daily</div><div class="n">${Math.max(...V.map(v=>v.s))}/${Math.max(...V.map(v=>v.d))}</div></div>
+     <div class="c"><div class="l">Single-reading range (sys)</div><div class="n">${Math.min(...allR.map(r=>r.s))}–${Math.max(...allR.map(r=>r.s))}</div></div>
+     <div class="c"><div class="l">Avg pulse</div><div class="n">${pv.length?R(mean(pv.map(d=>d.pulse))):'–'}</div></div>
+   </div>
+   <h3>Recent averages (daily values)</h3>
+   <div class="kv">${pr('Last 7 days',per7)}${pr('Last 30 days',per30)}${pr('Last 90 days',per90)}</div>
+   <h3>Trend</h3>
+   <div id="rChart" class="chart"></div>
+   <div class="sm muted"><span class="k sys"></span>Systolic &nbsp;<span class="k dia"></span>Diastolic · dots = individual readings, line = daily ${S.method==='low'?'lowest':'average'}, dashed = linear trend</div>
+   <div class="trend" id="rTrend"></div>
+   ${evs.length?`<h3>Events</h3>${evs.map(e=>`<div class="ev"><span>⚑ ${e.i+1} · ${esc(e.text)}</span><span class="muted">${fmtShort(keyToT(e.date))}</span></div>`).join('')}`:''}
+   <h3>Time in each range (daily values)</h3>
+   <table>${cats.map(c=>`<tr><td>${c.c}</td><td style="width:90px"><div class="bar"><i style="width:${c.n/V.length*100}%"></i></div></td><td style="width:70px">${c.n} d · ${R(c.n/V.length*100)}%</td></tr>`).join('')}</table>
+   <div class="sm muted">Categories follow the 2017 ACC/AHA adult guideline thresholds.</div>
+   <h3>By month</h3>
+   <table><tr><th>Month</th><th>Days</th><th>Avg</th><th>Lowest</th><th>Highest</th><th>Pulse</th></tr>${mrows}</table>
+   ${S.notes?`<h3>Medications / notes</h3><div style="white-space:pre-wrap">${esc(S.notes)}</div>`:''}
+   <div class="sm muted" style="margin-top:14px">Self-measured readings; for discussion with your clinician.</div>`;
+  const r=drawChart($('#rChart'),{range:S.rrange,show:{all:true,avg:S.method==='avg',low:S.method==='low',trend:true}});
+  $('#rTrend').innerHTML=r?trendHTML(r.trend):'';
+}
+$('#rrangeSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.rrange=+b.dataset.r;saveS();renderReport()};
+$('#printBtn').onclick=()=>{
+  const host=$('#rChart');drawChart(host,{range:S.rrange,show:{all:true,avg:S.method==='avg',low:S.method==='low',trend:true},width:700,height:320,interactive:false});
+  setTimeout(()=>{window.print();setTimeout(renderReport,500)},60);
+};
+
+/* ---------- History ---------- */
+let histN=30;
+function renderHistory(){
+  const l=DAYS.slice().reverse();
+  $('#hist').innerHTML=l.length?l.slice(0,histN).map(d=>{const v=val(d);return `<div class="day"><div class="h"><b>${fmtD(d.t0,true)}</b><span><b>${R(v.s)}/${R(v.d)}</b> <span class="muted sm">${S.method==='low'?'lowest':'avg'}</span></span></div>
+   <div class="rs">${d.rs.map(r=>`<button data-id="${r.id}">${r.s}/${r.d}${r.p?' · '+r.p:''} <span class="muted sm">${fmtT(r.t)}</span></button>`).join('')}</div>${d.rs.some(r=>r.n)?`<div class="sm muted" style="margin-top:4px">${d.rs.filter(r=>r.n).map(r=>esc(r.n)).join(' · ')}</div>`:''}</div>`}).join(''):'<div class="empty">No readings yet.</div>';
+  $('#moreHist').style.display=l.length>histN?'block':'none';
+}
+$('#moreHist').onclick=()=>{histN+=30;renderHistory()};
+$('#hist').onclick=e=>{const b=e.target.closest('button[data-id]');if(b)editReading(b.dataset.id)};
+function editReading(id){
+  const r=readings.find(x=>x.id===id);if(!r)return;
+  openModal(`<h2>Edit reading</h2>
+   <label class="f">Date &amp; time</label><input type="datetime-local" id="eT" value="${dtLocal(r.t)}">
+   <div class="row"><div style="flex:1"><label class="f">Systolic</label><input type="number" inputmode="numeric" id="eS" value="${r.s}"></div><div style="flex:1"><label class="f">Diastolic</label><input type="number" inputmode="numeric" id="eD" value="${r.d}"></div><div style="flex:1"><label class="f">Pulse</label><input type="number" inputmode="numeric" id="eP" value="${r.p||''}"></div></div>
+   <label class="f">Note</label><input type="text" id="eN" value="${esc(r.n||'')}">
+   <div style="height:12px"></div><button class="btn" id="eSave">Save</button><div style="height:8px"></div>
+   <div class="row"><button class="btn danger" id="eDel">Delete</button><button class="btn sec" id="eCan">Cancel</button></div>`);
+  $('#eCan').onclick=closeModal;
+  $('#eDel').onclick=()=>{readings=readings.filter(x=>x.id!==id);saveR();closeModal();refresh();toast('Deleted')};
+  $('#eSave').onclick=()=>{const t=new Date($('#eT').value).getTime(),s=+$('#eS').value,d=+$('#eD').value;
+    if(isNaN(t)||!(s>=60&&s<=260&&d>=30&&d<=160)||s<=d)return toast('Check the values');
+    Object.assign(r,{t,s,d,p:+$('#eP').value||undefined,n:$('#eN').value.trim()||undefined});saveR();closeModal();refresh();toast('Updated')};
+}
+
+/* ---------- Settings ---------- */
+function renderSettings(){
+  $$('#methodSeg button').forEach(b=>b.classList.toggle('on',b.dataset.m===S.method));
+  $('#tSys').value=S.tSys;$('#tDia').value=S.tDia;$('#pname').value=S.name;$('#pnotes').value=S.notes;
+  const evs=events.slice().sort((a,b)=>a.date<b.date?-1:1);
+  $('#evList').innerHTML=evs.map((e,i)=>`<div class="ev"><span>⚑ ${i+1} · ${esc(e.text)} <span class="muted sm">${fmtShort(keyToT(e.date))} ${e.date.slice(0,4)}</span></span><button class="btn sm sec" data-del="${e.id}">Remove</button></div>`).join('');
+  $('#bk').textContent=`${readings.length} readings on ${DAYS.length} days. `+(S.lastBackup?'Last export/backup: '+fmtD(S.lastBackup,true)+'.':'No backup made yet.');
+}
+$('#methodSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.method=b.dataset.m;saveS();renderSettings();toast('Daily value: '+methodName().toLowerCase())};
+[['tSys','tSys'],['tDia','tDia']].forEach(([id,k])=>$('#'+id).onchange=e=>{const v=+e.target.value;if(v>0){S[k]=v;saveS()}});
+$('#pname').onchange=e=>{S.name=e.target.value.trim();saveS()};
+$('#pnotes').onchange=e=>{S.notes=e.target.value.trim();saveS()};
+$('#evAdd').onclick=()=>{const date=$('#evDate').value,text=$('#evText').value.trim();if(!date||!text)return toast('Add a date and a description');
+  events.push({id:uid(),date,text});saveE();$('#evText').value='';renderSettings()};
+$('#evList').onclick=e=>{const b=e.target.closest('[data-del]');if(b){events=events.filter(x=>x.id!==b.dataset.del);saveE();renderSettings()}};
+
+/* ---------- Import ---------- */
+function splitLines(text){
+  const delim=text.includes('\t')?'\t':((text.match(/;/g)||[]).length>(text.match(/,/g)||[]).length?';':',');
+  const rows=[];let row=[],cur='',q=false;
+  for(let i=0;i<text.length;i++){const c=text[i];
+    if(q){if(c==='"'){if(text[i+1]==='"'){cur+='"';i++}else q=false}else cur+=c}
+    else if(c==='"')q=true;
+    else if(c===delim){row.push(cur);cur=''}
+    else if(c==='\n'||c==='\r'){if(c==='\r'&&text[i+1]==='\n')i++;row.push(cur);cur='';if(row.some(x=>x.trim()))rows.push(row);row=[]}
+    else cur+=c}
+  row.push(cur);if(row.some(x=>x.trim()))rows.push(row);return rows;
+}
+function parseDate(str){
+  str=String(str).trim();if(!str)return null;
+  let m;
+  if(/^\d{5}(\.\d+)?$/.test(str)&&+str>20000&&+str<80000){const n=+str,u=new Date(Date.UTC(1899,11,30)+Math.floor(n)*DAY),fr=n-Math.floor(n);return mk(u.getUTCFullYear(),u.getUTCMonth()+1,u.getUTCDate(),fr>0?Math.floor(fr*24):null,fr>0?Math.round((fr*24-Math.floor(fr*24))*60):0)}
+  if(m=str.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})(?:[T\s]+(\d{1,2}):(\d{2})(?::\d{2})?\s*([AaPp][Mm])?)?/)){return mk(+m[1],+m[2],+m[3],m[4],m[5],m[6])}
+  if(m=str.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})(?:[T\s,]+(\d{1,2}):(\d{2})(?::\d{2})?\s*([AaPp][Mm])?)?/)){
+    let a=+m[1],b=+m[2],y=+m[3];if(y<100)y+=2000;
+    const mo=a>12?b:a, dy=a>12?a:b;return mk(y,mo,dy,m[4],m[5],m[6])}
+  if(m=str.match(/^(\d{1,2})[-\s]([A-Za-z]{3})[a-z]*[-\s,]+(\d{2,4})(?:[,\sT]+(\d{1,2}):(\d{2})(?::\d{2})?\s*([AaPp][Mm])?)?/)){const mo=MON.findIndex(x=>x.toLowerCase()===m[2].toLowerCase());if(mo>=0){let y=+m[3];if(y<100)y+=2000;return mk(y,mo+1,+m[1],m[4],m[5],m[6])}}
+  if(m=str.match(/^([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})(?:[,\sT]+(\d{1,2}):(\d{2})(?::\d{2})?\s*([AaPp][Mm])?)?/)){const mo=MON.findIndex(x=>x.toLowerCase()===m[1].toLowerCase());if(mo>=0)return mk(+m[3],mo+1,+m[2],m[4],m[5],m[6])}
+  return null;
+  function mk(y,mo,d,h,mi,ap){let hh=h==null?null:+h;if(hh!=null&&ap){const pm=/p/i.test(ap);hh=hh%12+(pm?12:0)}
+    const dt=new Date(y,mo-1,d,hh??0,mi?+mi:0);if(isNaN(dt)||dt.getMonth()!==mo-1)return null;return {t:dt.getTime(),hasTime:hh!=null}}
+}
+function pd(s){const r=parseDate(s);return r==null?null:(typeof r==='number'?{t:r,hasTime:false}:r)}
+function parseImport(text){
+  const rows=splitLines(text);if(!rows.length)return {out:[],skipped:0,msg:'Nothing found'};
+  let hdr=null,start=0;
+  if(!pd(rows[0][0])){hdr=rows[0].map(h=>h.toLowerCase().replace(/[^a-z0-9]/g,''));start=1}
+  const map={s:[],d:[],p:[],date:-1,time:-1,note:-1,pair:[]};
+  if(hdr){
+    hdr.forEach((h,i)=>{
+      if(/^(date|day|datetime|timestamp)/.test(h)&&map.date<0)map.date=i;
+      else if(/^time/.test(h))map.time=i;
+      else if(/(sys|sbp|upper|high)/.test(h))map.s[(h.match(/(\d)/)||[0,map.s.length+1])[1]-1]=i;
+      else if(/(dia|dbp|lower|low)/.test(h))map.d[(h.match(/(\d)/)||[0,map.d.length+1])[1]-1]=i;
+      else if(/(pulse|hr|heart|bpm)/.test(h))map.p[(h.match(/(\d)/)||[0,map.p.length+1])[1]-1]=i;
+      else if(/(note|comment|remark)/.test(h))map.note=i;
+    });
+    if(map.date<0)map.date=0;
+  } else map.date=0;
+  const out=[];let skipped=0;const cnt={};
+  for(let ri=start;ri<rows.length;ri++){
+    const row=rows[ri];const dt=pd(row[map.date]);if(!dt){skipped++;continue}
+    let t0=dt.t;
+    if(map.time>=0&&row[map.time]){const m=row[map.time].trim().match(/^(\d{1,2}):(\d{2})\s*([AaPp][Mm])?/);if(m){let h=+m[1];if(m[3])h=h%12+(/p/i.test(m[3])?12:0);t0=startDay(t0)+h*36e5+(+m[2])*6e4;dt.hasTime=true}}
+    let rs=[];
+    const num=i=>{const v=parseFloat(String(row[i]??'').replace(/[^\d.]/g,''));return isNaN(v)?null:v};
+    if(hdr&&(map.s.some(x=>x!=null)&&map.d.some(x=>x!=null))){
+      const n=Math.max(map.s.length,map.d.length);
+      for(let i=0;i<n;i++){if(map.s[i]==null||map.d[i]==null)continue;const s=num(map.s[i]),d=num(map.d[i]);if(s&&d)rs.push({s,d,p:map.p[i]!=null?num(map.p[i]):(n===1&&map.p[0]!=null?num(map.p[0]):null)})}
+    } else {
+      const cells=row.slice(1).map(c=>c.trim());let nums=[];
+      for(const c of cells){const pm=c.match(/^(\d{2,3})\s*\/\s*(\d{2,3})$/);if(pm){rs.push({s:+pm[1],d:+pm[2],p:null})}else if(/^\d+(\.\d+)?$/.test(c))nums.push(+c)}
+      if(!rs.length){
+        const n=nums.length;
+        if(n===2||n===3)rs.push({s:nums[0],d:nums[1],p:nums[2]||null});
+        else if(n===6)for(let i=0;i<3;i++)rs.push({s:nums[i*2],d:nums[i*2+1],p:null});
+        else if(n===7)for(let i=0;i<3;i++)rs.push({s:nums[i*2],d:nums[i*2+1],p:nums[6]});
+        else if(n===9)for(let i=0;i<3;i++)rs.push({s:nums[i*3],d:nums[i*3+1],p:nums[i*3+2]});
+        else if(n>=4&&n%2===0)for(let i=0;i<n;i+=2)rs.push({s:nums[i],d:nums[i+1],p:null});
+      }
+    }
+    rs=rs.filter(r=>r.s>=60&&r.s<=260&&r.d>=30&&r.d<=160&&r.s>r.d);
+    if(!rs.length){skipped++;continue}
+    const dk=dkey(t0);const base=dt.hasTime?t0:startDay(t0)+8*36e5;
+    const note=map.note>=0?(row[map.note]||'').trim():'';
+    rs.forEach((r,i)=>{const j=cnt[dk]||0;cnt[dk]=j+1;out.push({id:uid(),t:dt.hasTime&&rs.length===1?base:base+(dt.hasTime?i:j)*5*6e4,s:Math.round(r.s),d:Math.round(r.d),p:r.p?Math.round(r.p):undefined,n:note&&i===0?note:undefined})});
+  }
+  return {out,skipped};
+}
+function startImport(text){
+  const res=parseImport(text);
+  if(!res.out.length)return toast('No readings found — check the column layout');
+  const ds=new Set(res.out.map(r=>dkey(r.t))),ts=res.out.map(r=>r.t);
+  const have=new Set(readings.map(r=>r.t+'|'+r.s+'|'+r.d));
+  const fresh=res.out.filter(r=>!have.has(r.t+'|'+r.s+'|'+r.d));
+  const sample=res.out.slice(0,3).map(r=>`${fmtD(r.t,true)} ${fmtT(r.t)}: ${r.s}/${r.d}${r.p?' · '+r.p:''}`).join('<br>');
+  openModal(`<h2>Import preview</h2>
+   <p><b>${res.out.length}</b> readings across <b>${ds.size}</b> days<br><span class="muted">${fmtD(Math.min(...ts),true)} → ${fmtD(Math.max(...ts),true)}</span></p>
+   <p class="sm muted">${fresh.length<res.out.length?(res.out.length-fresh.length)+' already in your log (will be skipped). ':''}${res.skipped?res.skipped+' rows skipped (no valid date or readings).':''}</p>
+   <div class="sm" style="background:var(--bg);padding:8px;border-radius:8px">First rows read as:<br>${sample}</div>
+   <div style="height:12px"></div>
+   <button class="btn" id="iAdd">Add ${fresh.length} readings</button><div style="height:8px"></div>
+   <button class="btn danger" id="iRep">Replace everything with these ${res.out.length}</button><div style="height:8px"></div>
+   <button class="btn sec" id="iCan">Cancel</button>`);
+  $('#iCan').onclick=closeModal;
+  $('#iAdd').onclick=()=>{readings.push(...fresh);saveR();closeModal();refresh();toast('Imported '+fresh.length)};
+  $('#iRep').onclick=()=>{if(!confirm('Delete your current '+readings.length+' readings and replace them?'))return;readings=res.out;saveR();closeModal();refresh();toast('Imported '+res.out.length)};
+}
+$('#impBtn').onclick=()=>$('#impFile').click();
+$('#impFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;startImport(await f.text());e.target.value=''};
+$('#impPaste').onclick=()=>startImport($('#impText').value);
+
+/* ---------- Export ---------- */
+async function outFile(name,text,type){
+  const f=new File([text],name,{type});
+  if(navigator.canShare&&navigator.canShare({files:[f]})){try{await navigator.share({files:[f],title:name});S.lastBackup=Date.now();saveS();renderSettings();return}catch(e){if(e.name==='AbortError')return}}
+  const a=document.createElement('a');a.href=URL.createObjectURL(f);a.download=name;document.body.appendChild(a);a.click();a.remove();
+  S.lastBackup=Date.now();saveS();renderSettings();
+}
+const csvq=s=>/[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
+$('#exCsv').onclick=()=>outFile('bp-readings.csv','date,time,systolic,diastolic,pulse,note\n'+readings.slice().sort((a,b)=>a.t-b.t).map(r=>[dkey(r.t),p2(new Date(r.t).getHours())+':'+p2(new Date(r.t).getMinutes()),r.s,r.d,r.p||'',csvq(r.n||'')].join(',')).join('\n'),'text/csv');
+$('#exDaily').onclick=()=>outFile('bp-daily-summary.csv','date,readings,avg_sys,avg_dia,lowest_sys,lowest_dia,pulse\n'+DAYS.map(d=>[d.k,d.rs.length,d.avg.s.toFixed(1),d.avg.d.toFixed(1),d.low.s,d.low.d,d.pulse?R(d.pulse):''].join(',')).join('\n'),'text/csv');
+$('#exJson').onclick=()=>outFile('bp-backup-'+dkey(Date.now())+'.json',JSON.stringify({v:1,readings,events,settings:S},null,1),'application/json');
+$('#rsBtn').onclick=()=>$('#rsFile').click();
+$('#rsFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;
+  try{const j=JSON.parse(await f.text());if(!Array.isArray(j.readings))throw 0;
+    if(!confirm('Replace current data with the backup ('+j.readings.length+' readings)?'))return;
+    readings=j.readings;events=j.events||[];if(j.settings)S=Object.assign(S,j.settings);S.show=Object.assign({all:true,avg:true,low:false,trend:true},S.show||{});saveR();saveE();saveS();refresh();toast('Restored')}
+  catch{toast('That file is not a valid backup')}e.target.value=''};
+$('#wipe').onclick=()=>{if(!confirm('Delete ALL readings, events and settings from this device? This cannot be undone.'))return;if(!confirm('Really delete everything? (Export a backup first if unsure.)'))return;
+  readings=[];events=[];saveR();saveE();refresh();toast('All data deleted')};
+
+/* ---------- UI helpers ---------- */
+function openModal(h){$('#sheet').innerHTML=h;$('#modal').style.display='flex'}
+function closeModal(){$('#modal').style.display='none'}
+$('#modal').addEventListener('pointerdown',e=>{if(e.target.id==='modal')closeModal()});
+let tT;function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(tT);tT=setTimeout(()=>t.style.display='none',2200)}
+
+/* ---------- init ---------- */
+if(location.hash==='#demo'&&!readings.length){ // sample data for trying the app
+  let seed=7;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
+  for(let i=200;i>=1;i--){const t=startDay(Date.now()-i*DAY)+8*36e5;if(rnd()<.08)continue;
+    const base=140-i*0.045+Math.sin(i/9)*3,bd=88-i*0.02;
+    for(let j=0;j<3;j++)readings.push({id:uid(),t:t+j*3e5,s:Math.round(base+(rnd()-.5)*12),d:Math.round(bd+(rnd()-.5)*8),p:Math.round(66+(rnd()-.5)*10)})}
+  events.push({id:uid(),date:dkey(Date.now()-90*DAY),text:'Started new medication'});
+}
+setNow();DAYS=buildDays();showTab('log');
+if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>
