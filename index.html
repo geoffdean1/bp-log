@@ -135,6 +135,7 @@ details summary{cursor:pointer;color:var(--ink2);font-weight:600;padding:6px 0}
       <button class="chip" data-s="avg">● Daily average</button>
       <button class="chip" data-s="low">◆ Daily lowest</button>
       <button class="chip" data-s="trend">╌ Trendline</button>
+      <button class="chip" data-s="notes">▢ Show notes</button>
     </div>
     <div class="sm muted" style="margin-top:10px"><span class="k sys"></span>Systolic (top) &nbsp; <span class="k dia"></span>Diastolic (bottom) &nbsp; mmHg</div>
     <div class="chart" id="chart"></div>
@@ -150,9 +151,9 @@ details summary{cursor:pointer;color:var(--ink2);font-weight:600;padding:6px 0}
     <div class="seg" id="rrangeSeg">
       <button data-r="30">30d</button><button data-r="90">90d</button><button data-r="180">6mo</button><button data-r="365">1yr</button><button data-r="0">All</button>
     </div>
-    <div style="height:10px"></div>
-    <button class="btn" id="printBtn">Print / Save as PDF</button>
-    <div class="sm muted" style="margin-top:6px">On iPhone: tap the button, then use the share icon → Save to Files, or show this screen to your doctor.</div>
+    <div class="pill" style="margin:10px 0"><button class="chip" id="rnotesChip">▢ Show notes on chart</button></div>
+    <button class="btn" id="printBtn">Save / share report as PDF</button>
+    <div class="sm muted" style="margin-top:6px">Makes a PDF of the report below. On iPhone a share sheet opens: choose Save to Files, Print, Mail or AirDrop. Or just show this screen to your doctor.</div>
   </div>
   <div class="card report" id="report"></div>
 </section>
@@ -228,8 +229,8 @@ const K={r:'bp.v1.readings',s:'bp.v1.settings',e:'bp.v1.events'};
 const ld=(k,d)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch{return d}};
 const sv=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{toast('Could not save – browser storage is blocked or full')}};
 let readings=ld(K.r,[]), events=ld(K.e,[]);
-let S=Object.assign({method:'avg',tSys:130,tDia:80,name:'',notes:'',range:90,rrange:90,lastBackup:0},ld(K.s,{}));
-S.show=Object.assign({all:true,avg:true,low:false,trend:true},S.show||{});
+let S=Object.assign({method:'avg',tSys:130,tDia:80,name:'',notes:'',range:90,rrange:90,rnotes:false,lastBackup:0},ld(K.s,{}));
+S.show=Object.assign({all:true,avg:true,low:false,trend:true,notes:false},S.show||{});
 const saveS=()=>sv(K.s,S), saveR=()=>sv(K.r,readings), saveE=()=>sv(K.e,events);
 const uid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36);
 
@@ -286,6 +287,28 @@ function trendHTML(t){
 }
 
 /* ---------- chart ---------- */
+function calcY(vis,show){
+  let vals=[];
+  if(show.all) vis.forEach(d=>d.rs.forEach(r=>vals.push(r.s,r.d)));
+  if(show.avg) vis.forEach(d=>vals.push(d.avg.s,d.avg.d));
+  if(show.low) vis.forEach(d=>vals.push(d.low.s,d.low.d));
+  if(!vals.length) vis.forEach(d=>vals.push(d.avg.s,d.avg.d));
+  let ymin=Math.floor((Math.min(...vals)-6)/10)*10, ymax=Math.ceil((Math.max(...vals)+6)/10)*10;
+  const step=(ymax-ymin)>90?20:10; ymin=Math.floor(ymin/step)*step; ymax=Math.ceil(ymax/step)*step;
+  return {ymin,ymax,step};
+}
+function xTicks(from,end,W){
+  const spanD=(end-from)/DAY; let ticks=[];
+  if(spanD>100){
+    const d0=new Date(from);let c=new Date(d0.getFullYear(),d0.getMonth()+(d0.getDate()>1?1:0),1),arr=[];
+    while(c.getTime()<end){arr.push(c.getTime());c=new Date(c.getFullYear(),c.getMonth()+1,1)}
+    const st=Math.max(1,Math.ceil(arr.length/(W<420?4:7)));
+    ticks=arr.filter((_,i)=>i%st===0).map(t=>({t,l:MON[new Date(t).getMonth()]+(spanD>330?" '"+String(new Date(t).getFullYear()).slice(2):'')}));
+  } else {
+    const n=W<420?4:6;for(let i=0;i<=n;i++){const t=from+i*(end-from)/n;ticks.push({t,l:fmtShort(Math.min(t,end-1))})}
+  }
+  return ticks;
+}
 function drawChart(host,o){
   const ds=DAYS;
   const W=Math.max(300,Math.round(o.width||host.clientWidth||340)), H=o.height||(W<520?290:330);
@@ -296,31 +319,20 @@ function drawChart(host,o){
   if(!vis.length){host.innerHTML='<div class="empty">No readings in this period.</div>';return null}
   const show=o.show;
   const useAll=show.all, useAvg=show.avg, useLow=show.low;
-  let vals=[];
   const anyDaily=useAvg||useLow;
-  if(useAll) vis.forEach(d=>d.rs.forEach(r=>vals.push(r.s,r.d)));
-  if(useAvg) vis.forEach(d=>vals.push(d.avg.s,d.avg.d));
-  if(useLow) vis.forEach(d=>vals.push(d.low.s,d.low.d));
-  if(!vals.length) vis.forEach(d=>vals.push(d.avg.s,d.avg.d));
-  let ymin=Math.floor((Math.min(...vals)-6)/10)*10, ymax=Math.ceil((Math.max(...vals)+6)/10)*10;
-  const step=(ymax-ymin)>90?20:10; ymin=Math.floor(ymin/step)*step; ymax=Math.ceil(ymax/step)*step;
+  const {ymin,ymax,step}=calcY(vis,show);
   const X=t=>m.l+(t-from)/(end-from)*(W-m.l-m.r), Y=v=>m.t+(1-(v-ymin)/(ymax-ymin))*(H-m.t-m.b);
   let g='';
   for(let v=ymin;v<=ymax;v+=step) g+=`<line class="gl" x1="${m.l}" x2="${W-m.r}" y1="${Y(v)}" y2="${Y(v)}"/><text class="tx" x="${m.l-6}" y="${Y(v)+4}" text-anchor="end">${v}</text>`;
   // x ticks
-  const spanD=(end-from)/DAY; let ticks=[];
-  if(spanD>100){
-    const d0=new Date(from);let c=new Date(d0.getFullYear(),d0.getMonth()+(d0.getDate()>1?1:0),1),arr=[];
-    while(c.getTime()<end){arr.push(c.getTime());c=new Date(c.getFullYear(),c.getMonth()+1,1)}
-    const st=Math.max(1,Math.ceil(arr.length/(W<420?4:7)));
-    ticks=arr.filter((_,i)=>i%st===0).map(t=>({t,l:MON[new Date(t).getMonth()]+(spanD>330?" '"+String(new Date(t).getFullYear()).slice(2):'')}));
-  } else {
-    const n=W<420?4:6;for(let i=0;i<=n;i++){const t=from+i*(end-from)/n;ticks.push({t,l:fmtShort(Math.min(t,end-1))})}
-  }
+  const ticks=xTicks(from,end,W);
   ticks.forEach((tk,i)=>{const x=X(tk.t);const an=(i===0&&x<m.l+16)?'start':(x>W-m.r-18?'end':'middle');
     g+=`<line class="gl" x1="${x}" x2="${x}" y1="${H-m.b}" y2="${H-m.b+4}"/><text class="tx" x="${x}" y="${H-8}" text-anchor="${an}">${tk.l}</text>`});
   // targets
   [[S.tSys,'sys'],[S.tDia,'dia']].forEach(([v,c])=>{if(v>ymin&&v<ymax)g+=`<line x1="${m.l}" x2="${W-m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--${c})" stroke-opacity=".55" stroke-width="1" stroke-dasharray="2 4"/>`});
+  // notes: small note icon above the axis on days where a reading has a note
+  if(show.notes){vis.forEach(d=>{if(!d.rs.some(r=>r.n))return;const x=X(d.x),y=H-m.b-12;
+    g+=`<rect x="${x-5}" y="${y}" width="10" height="9" rx="2" fill="var(--card)" stroke="var(--ink2)" stroke-width="1.2"/><path d="M${x-2.5} ${y+3}h5M${x-2.5} ${y+5.8}h3" stroke="var(--ink2)" stroke-width="1" stroke-linecap="round"/>`})}
   // events
   const evs=events.slice().sort((a,b)=>a.date<b.date?-1:1);
   evs.forEach((e,i)=>{const t=keyToT(e.date)+DAY/2;if(t<from||t>end)return;const x=X(t);
@@ -349,19 +361,27 @@ function drawChart(host,o){
   host.innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Blood pressure chart, ${vis.length} days">${g}${hov}</svg><div class="tip"></div>`;
   if(o.interactive!==false){
     const svg=$('svg',host),tip=$('.tip',host),hl=$('#hl',host),hv=$('#hov',host);
+    let hideT;
+    const hideTip=()=>{clearTimeout(hideT);tip.style.display='none';hv.style.display='none'};
     const move=ev=>{
+      clearTimeout(hideT);
       const rc=svg.getBoundingClientRect(),px=(ev.clientX-rc.left)*(W/rc.width);
       let best=vis[0],bd=1e18;for(const d of vis){const dd=Math.abs(X(d.x)-px);if(dd<bd){bd=dd;best=d}}
       const x=X(best.x);hv.style.display='';hl.setAttribute('x1',x);hl.setAttribute('x2',x);
-      const ev2=evs.map((e,i)=>({e,i})).filter(o=>o.e.date===best.k).map(o=>`<div>⚑ ${o.i+1}: ${esc(o.e.text)}</div>`).join('');
-      tip.innerHTML=`<b>${fmtD(best.t0,true)}</b><div>${best.rs.map(r=>r.s+'/'+r.d).join(' · ')}</div><div><span class="muted">Avg</span> ${R(best.avg.s)}/${R(best.avg.d)} &nbsp;<span class="muted">Lowest</span> ${best.low.s}/${best.low.d}</div>${ev2}`;
+      // events on this day, plus any event flag the finger is on (even if no reading that day)
+      const ev2=evs.map((e,i)=>({e,i})).filter(o=>o.e.date===best.k||Math.abs(X(keyToT(o.e.date)+DAY/2)-px)<=14).map(o=>`<div>⚑ ${o.i+1}: ${esc(o.e.text)}${o.e.date!==best.k?` <span class="muted">· ${fmtShort(keyToT(o.e.date))}</span>`:''}</div>`).join('');
+      const nt=show.notes?best.rs.filter(r=>r.n).map(r=>`<div><span class="muted">Note</span> ${esc(r.n)}</div>`).join(''):'';
+      tip.innerHTML=`<b>${fmtD(best.t0,true)}</b><div>${best.rs.map(r=>r.s+'/'+r.d).join(' · ')}</div><div><span class="muted">Avg</span> ${R(best.avg.s)}/${R(best.avg.d)} &nbsp;<span class="muted">Lowest</span> ${best.low.s}/${best.low.d}</div>${nt}${ev2}`;
       tip.style.display='block';const tw=tip.offsetWidth,sx=x*(rc.width/W);
       tip.style.left=Math.max(0,Math.min(rc.width-tw,sx-tw/2))+'px';
     };
     const hit=$('#hit',host);
+    // touch: keep the tip up for a few seconds after the finger lifts so it can be read; mouse: show on hover
+    const later=e=>{if(e.pointerType!=='mouse'){clearTimeout(hideT);hideT=setTimeout(hideTip,7000)}};
     hit.addEventListener('pointerdown',move);hit.addEventListener('pointermove',move);
-    hit.addEventListener('pointerleave',()=>{tip.style.display='none';hv.style.display='none'});
-    document.addEventListener('pointerdown',function f(e){if(!host.isConnected){document.removeEventListener('pointerdown',f);return}if(!host.contains(e.target)){tip.style.display='none';hv.style.display='none'}});
+    hit.addEventListener('pointerup',later);hit.addEventListener('pointercancel',later);
+    hit.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse')hideTip()});
+    document.addEventListener('pointerdown',function f(e){if(!host.isConnected){document.removeEventListener('pointerdown',f);return}if(!host.contains(e.target))hideTip()});
   }
   return {vis,trend:tr,from,end};
 }
@@ -406,7 +426,10 @@ function updatePreview(){
 $('#rows').addEventListener('input',e=>{
   e.target.value=e.target.value.replace(/\D/g,'');updatePreview();
   const all=$$('#rows input');const i=all.indexOf(e.target);
-  if(e.target.value.length===3&&i<all.length-1&&i%3<2)all[i+1].focus();
+  // jump to the next box when the number is complete: 3 digits, or 2 digits that can't grow into a valid 3-digit value
+  // (systolic 27+, diastolic 17+). Pulse is the last box in the row, so it never jumps.
+  const v=e.target.value,k=i%3;
+  if(k<2&&i<all.length-1&&(v.length===3||(v.length===2&&+v>=(k===0?27:17))))all[i+1].focus();
 });
 $('#save').onclick=()=>{
   const t0=new Date($('#when').value).getTime();
@@ -448,44 +471,63 @@ function cat(s,d){
   return 'Normal (<120 and <80)';
 }
 const CATS=['Normal (<120 and <80)','Elevated (120–129 and <80)','Stage 1 (130–139 or 80–89)','Stage 2 (≥140 or ≥90)','Crisis range (>180 or >120)'];
-function renderReport(){
-  $$('#rrangeSeg button').forEach(b=>b.classList.toggle('on',+b.dataset.r===S.rrange));
-  const el=$('#report');
+function reportModel(){
   const end=startDay(Date.now())+DAY, from=S.rrange>0?end-S.rrange*DAY:(DAYS[0]?DAYS[0].t0:end);
   const vis=DAYS.filter(d=>d.t0>=from);
-  if(!vis.length){el.innerHTML='<div class="empty">No readings in this period.</div>';return}
+  if(!vis.length)return null;
   const V=vis.map(d=>{const v=val(d);return {s:R(v.s),d:R(v.d)}}), allR=vis.flatMap(d=>d.rs);
   const per=n=>{const x=vis.filter(d=>d.t0>=end-n*DAY);return x.length?{n:x.length,s:mean(x.map(d=>val(d).s)),d:mean(x.map(d=>val(d).d)),p:(()=>{const q=x.filter(d=>d.pulse);return q.length?mean(q.map(d=>d.pulse)):null})()}:null};
-  const pc=(a,n)=>a.filter(Boolean).length;
   const atT=V.filter(v=>v.s<=S.tSys&&v.d<=S.tDia).length;
   const cats=CATS.map(c=>({c,n:V.filter(v=>cat(v.s,v.d)===c).length}));
   const byM=new Map();vis.forEach(d=>{const k=d.k.slice(0,7);if(!byM.has(k))byM.set(k,[]);byM.get(k).push(d)});
-  const mrows=[...byM.entries()].map(([k,ds])=>{const v=ds.map(d=>val(d));const ps=ds.filter(d=>d.pulse);
-    return `<tr><td>${MON[+k.slice(5)-1]} ${k.slice(0,4)}</td><td>${ds.length}</td><td><b>${R(mean(v.map(x=>x.s)))}/${R(mean(v.map(x=>x.d)))}</b></td><td>${Math.min(...v.map(x=>x.s))}/${Math.min(...v.map(x=>x.d))}</td><td>${Math.max(...v.map(x=>x.s))}/${Math.max(...v.map(x=>x.d))}</td><td>${ps.length?R(mean(ps.map(d=>d.pulse))):'–'}</td></tr>`}).join('');
+  const months=[...byM.entries()].map(([k,ds])=>{const v=ds.map(d=>val(d));const ps=ds.filter(d=>d.pulse);
+    return {label:MON[+k.slice(5)-1]+' '+k.slice(0,4),days:ds.length,avg:R(mean(v.map(x=>x.s)))+'/'+R(mean(v.map(x=>x.d))),low:R(Math.min(...v.map(x=>x.s)))+'/'+R(Math.min(...v.map(x=>x.d))),high:R(Math.max(...v.map(x=>x.s)))+'/'+R(Math.max(...v.map(x=>x.d))),pulse:ps.length?R(mean(ps.map(d=>d.pulse))):'–'}});
+  const notes=vis.flatMap(d=>d.rs.filter(r=>r.n).map(r=>({t:r.t,s:r.s,d:r.d,n:r.n})));
   const pv=vis.filter(d=>d.pulse);
-  const per7=per(7),per30=per(30),per90=per(90);
-  const pr=(l,x)=>x?`<div class="c"><div class="l">${l} · ${x.n} day${x.n>1?'s':''} logged</div><div class="n">${R(x.s)}/${R(x.d)}</div></div>`:'';
   const evs=events.slice().sort((a,b)=>a.date<b.date?-1:1).map((e,i)=>({...e,i})).filter(e=>keyToT(e.date)>=from-DAY);
+  const mn={
+    meanDaily:R(mean(V.map(v=>v.s)))+'/'+R(mean(V.map(v=>v.d))),
+    atTargetPct:R(atT/V.length*100),
+    lowestDaily:Math.min(...V.map(v=>v.s))+'/'+Math.min(...V.map(v=>v.d)),
+    highestDaily:Math.max(...V.map(v=>v.s))+'/'+Math.max(...V.map(v=>v.d)),
+    sysRange:Math.min(...allR.map(r=>r.s))+'–'+Math.max(...allR.map(r=>r.s)),
+    avgPulse:pv.length?R(mean(pv.map(d=>d.pulse))):'–'
+  };
+  return {end,from,vis,V,allR,cats,months,mn,evs,notes,per:[['Last 7 days',per(7)],['Last 30 days',per(30)],['Last 90 days',per(90)]]};
+}
+const reportShow=()=>({all:true,avg:S.method==='avg',low:S.method==='low',trend:true,notes:!!S.rnotes});
+function renderReport(){
+  $$('#rrangeSeg button').forEach(b=>b.classList.toggle('on',+b.dataset.r===S.rrange));
+  $('#rnotesChip').classList.toggle('on',!!S.rnotes);
+  const el=$('#report');
+  const M=reportModel();
+  if(!M){el.innerHTML='<div class="empty">No readings in this period.</div>';return}
+  const {vis,V,allR,cats,months,mn,evs,notes}=M;
+  const ndate=t=>fmtShort(t)+(M.end-M.from>330*DAY?', '+new Date(t).getFullYear():'');
+  const mrows=months.map(m=>`<tr><td>${m.label}</td><td>${m.days}</td><td><b>${m.avg}</b></td><td>${m.low}</td><td>${m.high}</td><td>${m.pulse}</td></tr>`).join('');
+  const pr=(l,x)=>x?`<div class="c"><div class="l">${l} · ${x.n} day${x.n>1?'s':''} logged</div><div class="n">${R(x.s)}/${R(x.d)}</div></div>`:'';
   el.innerHTML=`
    <div class="title">Blood pressure report${S.name?' — '+esc(S.name):''}</div>
    <div class="muted sm">${fmtD(vis[0].t0,true)} – ${fmtD(vis[vis.length-1].t0,true)} · ${vis.length} days · ${allR.length} readings · generated ${fmtD(Date.now(),true)}</div>
    <div class="muted sm">Daily value = <b>${S.method==='low'?'lowest reading of the day':'average of the day’s readings'}</b>. Home readings, mmHg.</div>
    <h3>Summary</h3>
    <div class="kv">
-     <div class="c"><div class="l">Mean daily BP</div><div class="n">${R(mean(V.map(v=>v.s)))}/${R(mean(V.map(v=>v.d)))}</div></div>
-     <div class="c"><div class="l">Days at/below target ${S.tSys}/${S.tDia}</div><div class="n">${R(atT/V.length*100)}%</div></div>
-     <div class="c"><div class="l">Lowest daily</div><div class="n">${Math.min(...V.map(v=>v.s))}/${Math.min(...V.map(v=>v.d))}</div></div>
-     <div class="c"><div class="l">Highest daily</div><div class="n">${Math.max(...V.map(v=>v.s))}/${Math.max(...V.map(v=>v.d))}</div></div>
-     <div class="c"><div class="l">Single-reading range (sys)</div><div class="n">${Math.min(...allR.map(r=>r.s))}–${Math.max(...allR.map(r=>r.s))}</div></div>
-     <div class="c"><div class="l">Avg pulse</div><div class="n">${pv.length?R(mean(pv.map(d=>d.pulse))):'–'}</div></div>
+     <div class="c"><div class="l">Mean daily BP</div><div class="n">${mn.meanDaily}</div></div>
+     <div class="c"><div class="l">Days at/below target ${S.tSys}/${S.tDia}</div><div class="n">${mn.atTargetPct}%</div></div>
+     <div class="c"><div class="l">Lowest daily</div><div class="n">${mn.lowestDaily}</div></div>
+     <div class="c"><div class="l">Highest daily</div><div class="n">${mn.highestDaily}</div></div>
+     <div class="c"><div class="l">Single-reading range (sys)</div><div class="n">${mn.sysRange}</div></div>
+     <div class="c"><div class="l">Avg pulse</div><div class="n">${mn.avgPulse}</div></div>
    </div>
    <h3>Recent averages (daily values)</h3>
-   <div class="kv">${pr('Last 7 days',per7)}${pr('Last 30 days',per30)}${pr('Last 90 days',per90)}</div>
+   <div class="kv">${M.per.map(([l,x])=>pr(l,x)).join('')}</div>
    <h3>Trend</h3>
    <div id="rChart" class="chart"></div>
    <div class="sm muted"><span class="k sys"></span>Systolic &nbsp;<span class="k dia"></span>Diastolic · dots = individual readings, line = daily ${S.method==='low'?'lowest':'average'}, dashed = linear trend</div>
    <div class="trend" id="rTrend"></div>
+   ${S.rnotes&&notes.length?'<div class="sm muted">Note icons mark days with a note (listed below under Reading notes).</div>':''}
    ${evs.length?`<h3>Events</h3>${evs.map(e=>`<div class="ev"><span>⚑ ${e.i+1} · ${esc(e.text)}</span><span class="muted">${fmtShort(keyToT(e.date))}</span></div>`).join('')}`:''}
+   ${S.rnotes&&notes.length?`<h3>Reading notes</h3>${notes.map(x=>`<div class="ev"><span>${esc(x.n)} <span class="muted sm">${x.s}/${x.d}</span></span><span class="muted">${ndate(x.t)}</span></div>`).join('')}`:''}
    <h3>Time in each range (daily values)</h3>
    <table>${cats.map(c=>`<tr><td>${c.c}</td><td style="width:90px"><div class="bar"><i style="width:${c.n/V.length*100}%"></i></div></td><td style="width:70px">${c.n} d · ${R(c.n/V.length*100)}%</td></tr>`).join('')}</table>
    <div class="sm muted">Categories follow the 2017 ACC/AHA adult guideline thresholds.</div>
@@ -493,13 +535,156 @@ function renderReport(){
    <table><tr><th>Month</th><th>Days</th><th>Avg</th><th>Lowest</th><th>Highest</th><th>Pulse</th></tr>${mrows}</table>
    ${S.notes?`<h3>Medications / notes</h3><div style="white-space:pre-wrap">${esc(S.notes)}</div>`:''}
    <div class="sm muted" style="margin-top:14px">Self-measured readings; for discussion with your clinician.</div>`;
-  const r=drawChart($('#rChart'),{range:S.rrange,show:{all:true,avg:S.method==='avg',low:S.method==='low',trend:true}});
+  const r=drawChart($('#rChart'),{range:S.rrange,show:reportShow()});
   $('#rTrend').innerHTML=r?trendHTML(r.trend):'';
 }
 $('#rrangeSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.rrange=+b.dataset.r;saveS();renderReport()};
+$('#rnotesChip').onclick=()=>{S.rnotes=!S.rnotes;saveS();renderReport()};
+/* ---------- PDF report (hand-built, no libraries, nothing leaves the device) ---------- */
+const HELV=[278,278,355,556,556,889,667,191,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,1015,667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,667,778,722,667,611,722,667,944,667,667,611,278,278,278,469,556,333,556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,556,556,333,500,278,556,500,722,500,500,500,334,260,334,584];
+const HELV2={0x85:1000,0x91:222,0x92:222,0x93:333,0x94:333,0x95:350,0x96:556,0x97:1000,0xB7:278};
+const PDFMAP={'≥':'>=','≤':'<=','−':'-','–':'\x96','—':'\x97','·':'\xB7','’':'\x92','‘':'\x91','“':'\x93','”':'\x94','…':'\x85','•':'\x95','⚑':'','→':'->','↑':'','↓':'','\u00a0':' '};
+// Turn any text into single-byte WinAnsi characters (the standard PDF font encoding). Safe to apply twice.
+function pdfEnc(s){let o='';for(const ch of String(s??'')){if(ch in PDFMAP){o+=PDFMAP[ch];continue}const c=ch.codePointAt(0);o+=c<32?' ':(c<127||(c>=128&&c<=255))?ch:'?'}return o}
+
+function buildReportPdf(M){
+  const PW=612,PH=792,PM=40,CW=PW-2*PM,SYS='#2a78d6',DIA='#eb6834';
+  const pages=[];let ops,y;
+  const f2=n=>String(Math.round(n*100)/100);
+  const rgb=h=>{const n=parseInt(h.slice(1),16);return [n>>16&255,n>>8&255,n&255].map(v=>f2(v/255)).join(' ')};
+  const mix=(h,a)=>{const n=parseInt(h.slice(1),16);return '#'+[n>>16&255,n>>8&255,n&255].map(v=>Math.round(255-(255-v)*a).toString(16).padStart(2,'0')).join('')};
+  const tw=(s,sz,b)=>{let w=0;for(const ch of s){const c=ch.charCodeAt(0);w+=(c>=32&&c<=126)?HELV[c-32]*(b&&!(c>=48&&c<=57)?1.07:1):(HELV2[c]??556)}return w*sz/1000};
+  const pesc=s=>s.replace(/[\\()]/g,'\\$&').replace(/[\x80-\xff]/g,c=>'\\'+c.charCodeAt(0).toString(8));
+  const T=(s,x,yy,o={})=>{s=pdfEnc(s);const sz=o.size||9,b=o.bold;let xx=x;
+    if(o.align==='right')xx=x-tw(s,sz,b);else if(o.align==='center')xx=x-tw(s,sz,b)/2;
+    ops.push(`BT /${b?'F2':'F1'} ${f2(sz)} Tf ${rgb(o.color||'#111111')} rg ${f2(xx)} ${f2(PH-yy)} Td (${pesc(s)}) Tj ET`)};
+  const L=(x1,y1,x2,y2,o={})=>ops.push(`q ${f2(o.w||.5)} w ${rgb(o.color||'#999999')} RG ${o.dash?`[${o.dash}] 0 d `:''}${f2(x1)} ${f2(PH-y1)} m ${f2(x2)} ${f2(PH-y2)} l S Q`);
+  const PL=(pts,o={})=>{if(pts.length>1)ops.push(`q ${f2(o.w||1)} w 1 J 1 j ${rgb(o.color||'#111111')} RG ${o.dash?`[${o.dash}] 0 d `:''}${pts.map((p,i)=>f2(p[0])+' '+f2(PH-p[1])+(i?' l':' m')).join(' ')} S Q`)};
+  const C=(cx,cy,r,o={})=>{const k=.5523*r,X=cx,Y=PH-cy,q=n=>f2(n);
+    const path=`${q(X+r)} ${q(Y)} m ${q(X+r)} ${q(Y+k)} ${q(X+k)} ${q(Y+r)} ${q(X)} ${q(Y+r)} c ${q(X-k)} ${q(Y+r)} ${q(X-r)} ${q(Y+k)} ${q(X-r)} ${q(Y)} c ${q(X-r)} ${q(Y-k)} ${q(X-k)} ${q(Y-r)} ${q(X)} ${q(Y-r)} c ${q(X+k)} ${q(Y-r)} ${q(X+r)} ${q(Y-k)} ${q(X+r)} ${q(Y)} c`;
+    ops.push(`q ${o.fill?rgb(o.fill)+' rg ':''}${o.stroke?rgb(o.stroke)+' RG '+f2(o.lw||1)+' w ':''}${path} ${o.fill&&o.stroke?'B':o.fill?'f':'S'} Q`)};
+  const DM=(cx,cy,r,fill,stroke)=>ops.push(`q ${rgb(fill)} rg ${rgb(stroke)} RG 1 w ${f2(cx)} ${f2(PH-cy+r)} m ${f2(cx+r)} ${f2(PH-cy)} l ${f2(cx)} ${f2(PH-cy-r)} l ${f2(cx-r)} ${f2(PH-cy)} l h B Q`);
+  const RR=(x,y0,w,h,r,fill)=>{const k=.5523*r,t=PH-y0,b=PH-y0-h,l=x,rt=x+w,q=f2;
+    ops.push(`q ${rgb(fill)} rg ${q(l+r)} ${q(t)} m ${q(rt-r)} ${q(t)} l ${q(rt-r+k)} ${q(t)} ${q(rt)} ${q(t-r+k)} ${q(rt)} ${q(t-r)} c ${q(rt)} ${q(b+r)} l ${q(rt)} ${q(b+r-k)} ${q(rt-r+k)} ${q(b)} ${q(rt-r)} ${q(b)} c ${q(l+r)} ${q(b)} l ${q(l+r-k)} ${q(b)} ${q(l)} ${q(b+r-k)} ${q(l)} ${q(b+r)} c ${q(l)} ${q(t-r)} l ${q(l)} ${q(t-r+k)} ${q(l+r-k)} ${q(t)} ${q(l+r)} ${q(t)} c f Q`)};
+  const wrap=(s,maxW,sz,b)=>{const out=[];
+    for(const para of String(s??'').split('\n').map(pdfEnc)){let line='';
+      for(let word of para.split(' ')){
+        while(tw(word,sz,b)>maxW&&word.length>1){let n=word.length-1;while(n>1&&tw(word.slice(0,n),sz,b)>maxW)n--;if(line){out.push(line);line=''}out.push(word.slice(0,n));word=word.slice(n)}
+        const test=line?line+' '+word:word;
+        if(line&&tw(test,sz,b)>maxW){out.push(line);line=word}else line=test}
+      out.push(line)}
+    return out};
+  const newPage=()=>{ops=[];pages.push(ops);y=PM};
+  const ensure=h=>{if(y+h>PH-PM-8)newPage()};
+  const heading=t=>{ensure(36);y+=16;T(t.toUpperCase(),PM,y,{size:9,bold:true,color:'#444444'});y+=5;L(PM,y,PM+CW,y,{w:.5,color:'#dddddd'});y+=8};
+  const para=(s,o={})=>{const sz=o.size||9;wrap(s,o.w||CW,sz,o.bold).forEach(l=>{ensure(sz+4);y+=sz+(o.gap??3);T(l,o.x??PM,y,{size:sz,bold:o.bold,color:o.color||'#444444'})})};
+  const cards=items=>{const cw=(CW-8)/2,h=42;
+    items.forEach(([lab,v],i)=>{if(i%2===0)ensure(h+8);const x=PM+(i%2)*(cw+8);
+      RR(x,y,cw,h,6,'#f2f2f0');T(lab,x+9,y+14,{size:8,color:'#444444'});T(v,x+9,y+34,{size:16,bold:true});
+      if(i%2===1||i===items.length-1)y+=h+8})};
+
+  function chart(cx,cy,W,H){
+    const m={l:34,r:34,t:16,b:26},{vis,from,end}=M,show=reportShow(),{ymin,ymax,step}=calcY(vis,show);
+    const X=t=>cx+m.l+(t-from)/(end-from)*(W-m.l-m.r),Y=v=>cy+m.t+(1-(v-ymin)/(ymax-ymin))*(H-m.t-m.b);
+    for(let v=ymin;v<=ymax;v+=step){L(cx+m.l,Y(v),cx+W-m.r,Y(v),{w:.5,color:'#e6e6e6'});T(String(v),cx+m.l-5,Y(v)+2.8,{size:7.5,color:'#444444',align:'right'})}
+    xTicks(from,end,W).forEach((tk,i)=>{const x=X(tk.t),rel=x-cx;
+      const al=(i===0&&rel<m.l+16)?'left':(rel>W-m.r-18?'right':'center');
+      L(x,cy+H-m.b,x,cy+H-m.b+3,{w:.5,color:'#999999'});T(tk.l,x,cy+H-8,{size:7.5,color:'#444444',align:al})});
+    [[S.tSys,SYS],[S.tDia,DIA]].forEach(([v,c])=>{if(v>ymin&&v<ymax)L(cx+m.l,Y(v),cx+W-m.r,Y(v),{w:.8,color:mix(c,.55),dash:'1.5 3'})});
+    if(show.notes)vis.forEach(d=>{if(!d.rs.some(r=>r.n))return;const x=X(d.x),yy=cy+H-m.b-12;
+      ops.push(`q 1 1 1 rg ${rgb('#444444')} RG 0.9 w ${f2(x-5)} ${f2(PH-yy-9)} 10 9 re B Q`);L(x-2.5,yy+3,x+2.5,yy+3,{w:.8,color:'#444444'});L(x-2.5,yy+5.8,x+0.5,yy+5.8,{w:.8,color:'#444444'})});
+    events.slice().sort((a,b)=>a.date<b.date?-1:1).forEach((e,i)=>{const t=keyToT(e.date)+DAY/2;if(t<from||t>end)return;const x=X(t);
+      L(x,cy+m.t+8,x,cy+H-m.b,{w:.5,color:'#999999',dash:'1 2.5'});C(x,cy+m.t+4,7,{fill:'#444444'});T(String(i+1),x,cy+m.t+6.8,{size:7,bold:true,color:'#ffffff',align:'center'})});
+    const many=vis.length>45;
+    if(show.all)vis.forEach(d=>d.rs.forEach(r=>{C(X(d.x),Y(r.s),many?1.2:1.9,{fill:mix(SYS,.4)});C(X(d.x),Y(r.d),many?1.2:1.9,{fill:mix(DIA,.4)})}));
+    const dp=k=>vis.map(d=>({x:d.x,s:d[k].s,d:d[k].d}));
+    if(show.low){const p=dp('low');PL(p.map(q=>[X(q.x),Y(q.s)]),{w:1.5,color:SYS,dash:'.5 4'});PL(p.map(q=>[X(q.x),Y(q.d)]),{w:1.5,color:DIA,dash:'.5 4'});
+      if(!many)p.forEach(q=>{DM(X(q.x),Y(q.s),3.4,SYS,'#ffffff');DM(X(q.x),Y(q.d),3.4,DIA,'#ffffff')})}
+    if(show.avg){const p=dp('avg');PL(p.map(q=>[X(q.x),Y(q.s)]),{w:1.6,color:SYS});PL(p.map(q=>[X(q.x),Y(q.d)]),{w:1.6,color:DIA});
+      if(!many)p.forEach(q=>{C(X(q.x),Y(q.s),2.6,{fill:SYS,stroke:'#ffffff',lw:1});C(X(q.x),Y(q.d),2.6,{fill:DIA,stroke:'#ffffff',lw:1})})}
+    const tr=trendOf(vis,show);
+    if(show.trend&&tr.ok){const xs=tr.pts.map(p=>p.x),a=Math.min(...xs),b=Math.max(...xs);
+      [[tr.rs,SYS],[tr.rd,DIA]].forEach(([r,c])=>{const pts=[[X(a),Y(r.a+r.b*a/DAY)],[X(b),Y(r.a+r.b*b/DAY)]];PL(pts,{w:4.5,color:'#ffffff'});PL(pts,{w:2,color:c,dash:'6 4'})})}
+    const lv=vis[vis.length-1][show.avg?'avg':'low'];
+    T('SYS',cx+W-m.r+4,Y(lv.s)+2.8,{size:7.5,color:'#444444'});T('DIA',cx+W-m.r+4,Y(lv.d)+2.8,{size:7.5,color:'#444444'});
+    return tr}
+
+  newPage();
+  y+=18;wrap('Blood pressure report'+(S.name?' — '+S.name:''),CW,18,true).forEach(l=>{T(l,PM,y,{size:18,bold:true});y+=21});y-=8;
+  para(`${fmtD(M.vis[0].t0,true)} – ${fmtD(M.vis[M.vis.length-1].t0,true)} · ${M.vis.length} days · ${M.allR.length} readings · generated ${fmtD(Date.now(),true)}`,{color:'#666666',size:9});
+  para(`Daily value = ${S.method==='low'?'lowest reading of the day':'average of the day’s readings'}. Home readings, mmHg.`,{color:'#666666',size:9});
+  const mn=M.mn;
+  heading('Summary');
+  cards([['Mean daily BP',mn.meanDaily],[`Days at/below target ${S.tSys}/${S.tDia}`,mn.atTargetPct+'%'],['Lowest daily',mn.lowestDaily],['Highest daily',mn.highestDaily],['Single-reading range (sys)',mn.sysRange],['Avg pulse',mn.avgPulse]]);
+  heading('Recent averages (daily values)');
+  cards(M.per.filter(p=>p[1]).map(([l,x])=>[`${l} · ${x.n} day${x.n>1?'s':''} logged`,R(x.s)+'/'+R(x.d)]));
+  heading('Trend');
+  ensure(240);
+  const CH=210,tr=chart(PM,y,CW,CH);y+=CH+8;
+  {const sz=8;let x=PM;ensure(14);y+=sz;
+    C(x+3,y-2.7,3,{fill:SYS});T('Systolic',x+9,y,{size:sz,color:'#444444'});x+=9+tw('Systolic',sz)+10;
+    C(x+3,y-2.7,3,{fill:DIA});T('Diastolic',x+9,y,{size:sz,color:'#444444'});x+=9+tw('Diastolic',sz)+10;
+    T(`dots = individual readings, line = daily ${S.method==='low'?'lowest':'average'}, dashed = linear trend`,x,y,{size:sz,color:'#444444'});y+=6}
+  if(S.rnotes&&M.notes.length)para('Note icons mark days with a note (listed below under Reading notes).',{size:8,color:'#666666'});
+  if(tr.ok){
+    [['Systolic',SYS,tr.rs],['Diastolic',DIA,tr.rd]].forEach(([n,c,r])=>{ensure(30);y+=12;
+      const dir=dirOf(r.b*tr.span);C(PM+4,y-3,3.5,{fill:c});T(n+'  '+dir.tx,PM+13,y,{size:9.5,bold:true});y+=11;
+      T(`${sgn(r.b*30)} mmHg per 30 days · ${sgn(r.b*tr.span)} over ${R(tr.span)} days`,PM+13,y,{size:8.5,color:'#666666'});y+=3});
+    para(`Linear trend of ${tr.label} · ${tr.days} days. “Steady” = less than 3 mmHg total change across the period.`,{size:8,color:'#666666'});
+  } else para('Not enough data for a trend yet — needs at least a week of days spanning two weeks or more in this period.',{size:8.5,color:'#666666'});
+  if(M.evs.length){heading('Events');
+    M.evs.forEach(e=>{const ls=wrap(`Event ${e.i+1} · ${e.text}`,CW-70,9);ensure(ls.length*13+4);
+      ls.forEach((l,i)=>{y+=13;T(l,PM,y,{size:9});if(i===0)T(fmtShort(keyToT(e.date)),PM+CW,y,{size:9,color:'#666666',align:'right'})});
+      y+=3;L(PM,y,PM+CW,y,{w:.4,color:'#e5e5e5'})})}
+  if(S.rnotes&&M.notes.length){heading('Reading notes');
+    const nd=t=>fmtShort(t)+(M.end-M.from>330*DAY?', '+new Date(t).getFullYear():'');
+    M.notes.forEach(x=>{const ls=wrap(`${x.s}/${x.d} · ${x.n}`,CW-90,9);ensure(ls.length*13+4);
+      ls.forEach((l,i)=>{y+=13;T(l,PM,y,{size:9});if(i===0)T(nd(x.t),PM+CW,y,{size:9,color:'#666666',align:'right'})});
+      y+=3;L(PM,y,PM+CW,y,{w:.4,color:'#e5e5e5'})})}
+  heading('Time in each range (daily values)');
+  M.cats.forEach(c=>{ensure(18);y+=12;T(c.c,PM,y,{size:9});
+    RR(PM+235,y-6.5,150,6,3,'#e8e7e3');if(c.n>0)RR(PM+235,y-6.5,Math.max(6,c.n/M.V.length*150),6,3,'#555555');
+    T(`${c.n} d · ${R(c.n/M.V.length*100)}%`,PM+CW,y,{size:9,align:'right'});y+=4;L(PM,y,PM+CW,y,{w:.4,color:'#e5e5e5'})});
+  para('Categories follow the 2017 ACC/AHA adult guideline thresholds.',{size:8,color:'#666666',gap:6});
+  heading('By month');
+  const cols=[['Month',PM,'left'],['Days',PM+150,'right'],['Avg',PM+240,'right'],['Lowest',PM+340,'right'],['Highest',PM+440,'right'],['Pulse',PM+CW,'right']];
+  const mhead=()=>{ensure(40);y+=11;cols.forEach(([n,x,a])=>T(n,x,y,{size:8,bold:true,color:'#444444',align:a==='right'?'right':undefined}));y+=4;L(PM,y,PM+CW,y,{w:.6,color:'#bbbbbb'})};
+  mhead();
+  M.months.forEach(m=>{if(y+18>PH-PM-8){newPage();mhead()}y+=13;
+    [m.label,m.days,m.avg,m.low,m.high,m.pulse].forEach((v,i)=>T(String(v),cols[i][1],y,{size:9,bold:i===2,align:cols[i][2]==='right'?'right':undefined}));
+    y+=4;L(PM,y,PM+CW,y,{w:.4,color:'#e5e5e5'})});
+  if(S.notes){heading('Medications / notes');para(S.notes,{size:9,color:'#111111',gap:4})}
+  y+=6;para('Self-measured readings; for discussion with your clinician.',{size:8,color:'#666666'});
+  pages.forEach((p,i)=>{ops=p;T(`Page ${i+1} of ${pages.length}`,PW/2,PH-22,{size:8,color:'#666666',align:'center'})});
+
+  // ----- assemble the PDF file -----
+  const n=pages.length,objs=[];
+  objs[1]='<< /Type /Catalog /Pages 2 0 R >>';
+  objs[2]=`<< /Type /Pages /Kids [${pages.map((_,i)=>(6+2*i)+' 0 R').join(' ')}] /Count ${n} >>`;
+  objs[3]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
+  objs[4]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
+  objs[5]=`<< /Title (Blood pressure report) /Producer (BP Log) >>`;
+  pages.forEach((p,i)=>{const s=p.join('\n');
+    objs[5+2*i+1]=`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PW} ${PH}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${7+2*i} 0 R >>`;
+    objs[7+2*i]=`<< /Length ${s.length} >>\nstream\n${s}\nendstream`});
+  let out='%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';const off=[];
+  for(let i=1;i<objs.length;i++){off[i]=out.length;out+=`${i} 0 obj\n${objs[i]}\nendobj\n`}
+  const xr=out.length;
+  out+=`xref\n0 ${objs.length}\n0000000000 65535 f \n`+off.slice(1).map(o=>String(o).padStart(10,'0')+' 00000 n \n').join('')+`trailer\n<< /Size ${objs.length} /Root 1 0 R /Info 5 0 R >>\nstartxref\n${xr}\n%%EOF\n`;
+  const bytes=new Uint8Array(out.length);for(let i=0;i<out.length;i++)bytes[i]=out.charCodeAt(i)&255;
+  return bytes;
+}
+function savePdfFile(f){const a=document.createElement('a');a.href=URL.createObjectURL(f);a.download=f.name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),60000)}
 $('#printBtn').onclick=()=>{
-  const host=$('#rChart');drawChart(host,{range:S.rrange,show:{all:true,avg:S.method==='avg',low:S.method==='low',trend:true},width:700,height:320,interactive:false});
-  setTimeout(()=>{window.print();setTimeout(renderReport,500)},60);
+  const M=reportModel();
+  if(!M)return toast('No readings in this period');
+  let bytes;try{bytes=buildReportPdf(M)}catch(e){console.error(e);return toast('Could not build the PDF')}
+  const f=new File([bytes],'bp-report-'+dkey(Date.now())+'.pdf',{type:'application/pdf'});
+  if(navigator.canShare&&navigator.canShare({files:[f]})){
+    navigator.share({files:[f],title:'Blood pressure report'}).catch(e=>{if(e&&e.name!=='AbortError')savePdfFile(f)});
+    return;
+  }
+  savePdfFile(f);
 };
 
 /* ---------- History ---------- */
@@ -654,7 +839,7 @@ $('#rsBtn').onclick=()=>$('#rsFile').click();
 $('#rsFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;
   try{const j=JSON.parse(await f.text());if(!Array.isArray(j.readings))throw 0;
     if(!confirm('Replace current data with the backup ('+j.readings.length+' readings)?'))return;
-    readings=j.readings;events=j.events||[];if(j.settings)S=Object.assign(S,j.settings);S.show=Object.assign({all:true,avg:true,low:false,trend:true},S.show||{});saveR();saveE();saveS();refresh();toast('Restored')}
+    readings=j.readings;events=j.events||[];if(j.settings)S=Object.assign(S,j.settings);S.show=Object.assign({all:true,avg:true,low:false,trend:true,notes:false},S.show||{});saveR();saveE();saveS();refresh();toast('Restored')}
   catch{toast('That file is not a valid backup')}e.target.value=''};
 $('#wipe').onclick=()=>{if(!confirm('Delete ALL readings, events and settings from this device? This cannot be undone.'))return;if(!confirm('Really delete everything? (Export a backup first if unsure.)'))return;
   readings=[];events=[];saveR();saveE();refresh();toast('All data deleted')};
