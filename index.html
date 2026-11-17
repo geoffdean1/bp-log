@@ -136,7 +136,10 @@ details summary{cursor:pointer;color:var(--ink2);font-weight:600;padding:6px 0}
       <button class="chip" data-s="low">◆ Daily lowest</button>
       <button class="chip" data-s="trend">╌ Trendline</button>
       <button class="chip" data-s="notes">▢ Show notes</button>
+      <button class="chip" data-s="meds" id="medChip">▥ Meds</button>
     </div>
+    <div class="pill" id="medPick" style="margin-top:8px;display:none"></div>
+    <div class="sm muted" id="medLegend" style="margin-top:8px;display:none"></div>
     <div class="sm muted" style="margin-top:10px"><span class="k sys"></span>Systolic (top) &nbsp; <span class="k dia"></span>Diastolic (bottom) &nbsp; mmHg</div>
     <div class="chart" id="chart"></div>
     <div class="trend" id="trendBox"></div>
@@ -151,7 +154,7 @@ details summary{cursor:pointer;color:var(--ink2);font-weight:600;padding:6px 0}
     <div class="seg" id="rrangeSeg">
       <button data-r="30">30d</button><button data-r="90">90d</button><button data-r="180">6mo</button><button data-r="365">1yr</button><button data-r="0">All</button>
     </div>
-    <div class="pill" style="margin:10px 0"><button class="chip" id="rnotesChip">▢ Show notes on chart</button></div>
+    <div class="pill" style="margin:10px 0"><button class="chip" id="rnotesChip">▢ Show notes on chart</button><button class="chip" id="rmedsChip">▥ Show medication log</button></div>
     <button class="btn" id="printBtn">Save / share report as PDF</button>
     <div class="sm muted" style="margin-top:6px">Makes a PDF of the report below. On iPhone a share sheet opens: choose Save to Files, Print, Mail or AirDrop. Or just show this screen to your doctor.</div>
   </div>
@@ -183,6 +186,13 @@ details summary{cursor:pointer;color:var(--ink2);font-weight:600;padding:6px 0}
     <div class="sm muted" style="margin-bottom:6px">Mark medication changes, illness, travel etc. They appear as numbered flags on the chart and on the report.</div>
     <div class="row"><input type="date" id="evDate" style="flex:0 0 150px"><input type="text" id="evText" placeholder="Started new medication"><button class="btn sm" id="evAdd">Add</button></div>
     <div id="evList" style="margin-top:8px"></div>
+  </div>
+  <div class="card">
+    <h2>Medication log</h2>
+    <div class="sm muted" style="margin-bottom:8px">Import the Medications CSV exported from Apple Health. A day counts as “dose logged” when it has a Taken entry; any other status counts as “no dose logged”. Hide a medication to leave it out of the chart and report. Stays on this device.</div>
+    <input type="file" id="medFile" accept=".csv,.txt,text/csv,text/plain" style="display:none">
+    <button class="btn sec" id="medBtn">Choose medication CSV…</button>
+    <div id="medList" style="margin-top:8px"></div>
   </div>
   <div class="card">
     <h2>Import</h2>
@@ -225,13 +235,17 @@ const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelect
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const DAY=864e5, p2=n=>String(n).padStart(2,'0');
 const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const K={r:'bp.v1.readings',s:'bp.v1.settings',e:'bp.v1.events'};
+const K={r:'bp.v1.readings',s:'bp.v1.settings',e:'bp.v1.events',m:'bp.v1.meds'};
 const ld=(k,d)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch{return d}};
 const sv=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{toast('Could not save – browser storage is blocked or full')}};
 let readings=ld(K.r,[]), events=ld(K.e,[]);
-let S=Object.assign({method:'avg',tSys:130,tDia:80,name:'',notes:'',range:90,rrange:90,rnotes:false,lastBackup:0},ld(K.s,{}));
-S.show=Object.assign({all:true,avg:true,low:false,trend:true,notes:false},S.show||{});
-const saveS=()=>sv(K.s,S), saveR=()=>sv(K.r,readings), saveE=()=>sv(K.e,events);
+let medData=ld(K.m,{list:[]});if(!medData||!Array.isArray(medData.list))medData={list:[]};
+let S=Object.assign({method:'avg',tSys:130,tDia:80,name:'',notes:'',range:90,rrange:90,rnotes:false,rmeds:false,medSel:'',lastBackup:0},ld(K.s,{}));
+S.show=Object.assign({all:true,avg:true,low:false,trend:true,notes:false,meds:false},S.show||{});
+const saveS=()=>sv(K.s,S), saveR=()=>sv(K.r,readings), saveE=()=>sv(K.e,events), saveM=()=>sv(K.m,medData);
+const medVisible=()=>medData.list.filter(m=>!m.hide);
+function selMed(){const v=medVisible();return v.find(m=>m.id===S.medSel)||v[0]||null}
+const fmtDY=t=>fmtShort(t)+', '+new Date(t).getFullYear();
 const uid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36);
 
 /* ---------- date helpers ---------- */
@@ -323,6 +337,9 @@ function drawChart(host,o){
   const {ymin,ymax,step}=calcY(vis,show);
   const X=t=>m.l+(t-from)/(end-from)*(W-m.l-m.r), Y=v=>m.t+(1-(v-ymin)/(ymax-ymin))*(H-m.t-m.b);
   let g='';
+  const med=show.meds?selMed():null;
+  if(med){const wpx=(W-m.l-m.r)/((end-from)/DAY)+.4;Object.keys(med.days).forEach(k=>{if(med.days[k]==='T')return;const t=keyToT(k);if(t<from||t>=end)return;
+    g+=`<rect x="${X(t).toFixed(1)}" y="${m.t}" width="${wpx.toFixed(2)}" height="${H-m.t-m.b}" fill="var(--muted)" fill-opacity=".16"/>`})}
   for(let v=ymin;v<=ymax;v+=step) g+=`<line class="gl" x1="${m.l}" x2="${W-m.r}" y1="${Y(v)}" y2="${Y(v)}"/><text class="tx" x="${m.l-6}" y="${Y(v)+4}" text-anchor="end">${v}</text>`;
   // x ticks
   const ticks=xTicks(from,end,W);
@@ -371,7 +388,8 @@ function drawChart(host,o){
       // events on this day, plus any event flag the finger is on (even if no reading that day)
       const ev2=evs.map((e,i)=>({e,i})).filter(o=>o.e.date===best.k||Math.abs(X(keyToT(o.e.date)+DAY/2)-px)<=14).map(o=>`<div>⚑ ${o.i+1}: ${esc(o.e.text)}${o.e.date!==best.k?` <span class="muted">· ${fmtShort(keyToT(o.e.date))}</span>`:''}</div>`).join('');
       const nt=show.notes?best.rs.filter(r=>r.n).map(r=>`<div><span class="muted">Note</span> ${esc(r.n)}</div>`).join(''):'';
-      tip.innerHTML=`<b>${fmtD(best.t0,true)}</b><div>${best.rs.map(r=>r.s+'/'+r.d).join(' · ')}</div><div><span class="muted">Avg</span> ${R(best.avg.s)}/${R(best.avg.d)} &nbsp;<span class="muted">Lowest</span> ${best.low.s}/${best.low.d}</div>${nt}${ev2}`;
+      const md=med?`<div><span class="muted">${esc(med.name)}</span> ${({T:'dose logged',S:'no dose logged',N:'no dose logged'})[med.days[best.k]]||'no entry'}</div>`:'';
+      tip.innerHTML=`<b>${fmtD(best.t0,true)}</b><div>${best.rs.map(r=>r.s+'/'+r.d).join(' · ')}</div><div><span class="muted">Avg</span> ${R(best.avg.s)}/${R(best.avg.d)} &nbsp;<span class="muted">Lowest</span> ${best.low.s}/${best.low.d}</div>${nt}${md}${ev2}`;
       tip.style.display='block';const tw=tip.offsetWidth,sx=x*(rc.width/W);
       tip.style.left=Math.max(0,Math.min(rc.width-tw,sx-tw/2))+'px';
     };
@@ -452,9 +470,16 @@ function syncChartUI(){
   $$('#chips .chip').forEach(c=>c.classList.toggle('on',!!S.show[c.dataset.s]));
 }
 $('#rangeSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.range=+b.dataset.r;saveS();renderChartTab()};
+$('#medPick').onclick=e=>{const b=e.target.closest('.chip');if(!b)return;S.medSel=b.dataset.id;saveS();renderChartTab()};
 $('#chips').onclick=e=>{const b=e.target.closest('.chip');if(!b)return;S.show[b.dataset.s]=!S.show[b.dataset.s];saveS();renderChartTab()};
 function renderChartTab(){
   syncChartUI();
+  const mv=medVisible(),on=!!(S.show.meds&&mv.length),sm=selMed();
+  $('#medChip').style.display=mv.length?'':'none';
+  $('#medPick').style.display=on&&mv.length>1?'flex':'none';
+  $('#medPick').innerHTML=mv.map(m=>`<button class="chip${sm&&m.id===sm.id?' on':''}" data-id="${esc(m.id)}">${esc(m.name)}</button>`).join('');
+  $('#medLegend').style.display=on?'':'none';
+  $('#medLegend').innerHTML=on&&sm?`<span class="k" style="background:var(--muted);opacity:.45;border-radius:2px"></span>Shaded days = no dose logged (${esc(sm.name)})`:'';
   const r=drawChart($('#chart'),{range:S.range,show:S.show});
   $('#trendBox').innerHTML=r?(S.show.trend?trendHTML(r.trend):''):'';
   const vis=r?r.vis.slice().reverse():[];
@@ -471,6 +496,19 @@ function cat(s,d){
   return 'Normal (<120 and <80)';
 }
 const CATS=['Normal (<120 and <80)','Elevated (120–129 and <80)','Stage 1 (130–139 or 80–89)','Stage 2 (≥140 or ≥90)','Crisis range (>180 or >120)'];
+function medStats(from,vis){
+  const pk=k=>dkey(keyToT(k)-12*36e5);
+  return medVisible().map(m=>{
+    const ks=Object.keys(m.days).filter(k=>keyToT(k)>=from).sort();
+    if(!ks.length)return null;
+    const was=(k,t)=>{const s=m.days[k];return t?s==='T':(s==='S'||s==='N')};
+    const grp=(label,pred)=>{const ds=vis.filter(pred);
+      return ds.length?{label,n:ds.length,avg:R(mean(ds.map(d=>R(val(d).s))))+'/'+R(mean(ds.map(d=>R(val(d).d)))),high:Math.max(...ds.map(d=>R(val(d).s)))+'/'+Math.max(...ds.map(d=>R(val(d).d)))}:{label,n:0,avg:'–',high:'–'}};
+    return {name:m.name,first:keyToT(ks[0]),last:keyToT(ks[ks.length-1]),logged:ks.filter(k=>m.days[k]==='T').length,notLogged:ks.filter(k=>m.days[k]!=='T').length,
+      groups:[grp('Dose logged that day',d=>was(d.k,1)),grp('No dose logged that day',d=>was(d.k,0)),grp('Day after a logged dose',d=>was(pk(d.k),1)),grp('Day after no dose logged',d=>was(pk(d.k),0))]};
+  }).filter(Boolean);
+}
+const medCaption=()=>`Daily value = ${S.method==='low'?'lowest reading of the day':'average of the day’s readings'}. “Days” = days with BP readings in this period. “No dose logged” = no “Taken” entry that day in the medication log; days with no entry are left out.`;
 function reportModel(){
   const end=startDay(Date.now())+DAY, from=S.rrange>0?end-S.rrange*DAY:(DAYS[0]?DAYS[0].t0:end);
   const vis=DAYS.filter(d=>d.t0>=from);
@@ -493,12 +531,13 @@ function reportModel(){
     sysRange:Math.min(...allR.map(r=>r.s))+'–'+Math.max(...allR.map(r=>r.s)),
     avgPulse:pv.length?R(mean(pv.map(d=>d.pulse))):'–'
   };
-  return {end,from,vis,V,allR,cats,months,mn,evs,notes,per:[['Last 7 days',per(7)],['Last 30 days',per(30)],['Last 90 days',per(90)]]};
+  return {end,from,vis,V,allR,cats,months,mn,evs,notes,med:medStats(from,vis),per:[['Last 7 days',per(7)],['Last 30 days',per(30)],['Last 90 days',per(90)]]};
 }
 const reportShow=()=>({all:true,avg:S.method==='avg',low:S.method==='low',trend:true,notes:!!S.rnotes});
 function renderReport(){
   $$('#rrangeSeg button').forEach(b=>b.classList.toggle('on',+b.dataset.r===S.rrange));
   $('#rnotesChip').classList.toggle('on',!!S.rnotes);
+  $('#rmedsChip').style.display=medVisible().length?'':'none';$('#rmedsChip').classList.toggle('on',!!S.rmeds);
   const el=$('#report');
   const M=reportModel();
   if(!M){el.innerHTML='<div class="empty">No readings in this period.</div>';return}
@@ -533,6 +572,7 @@ function renderReport(){
    <div class="sm muted">Categories follow the 2017 ACC/AHA adult guideline thresholds.</div>
    <h3>By month</h3>
    <table><tr><th>Month</th><th>Days</th><th>Avg</th><th>Lowest</th><th>Highest</th><th>Pulse</th></tr>${mrows}</table>
+   ${S.rmeds&&M.med.length?`<h3>Medication log</h3>${M.med.map(x=>`<div class="muted sm" style="margin:8px 0 4px"><b>${esc(x.name)}</b> · ${fmtDY(x.first)} – ${fmtDY(x.last)} · dose logged ${x.logged} days · no dose logged ${x.notLogged} days</div><table><tr><th>Group</th><th>Days</th><th>Avg</th><th>Highest</th></tr>${x.groups.map(g=>`<tr><td>${g.label}</td><td>${g.n}</td><td><b>${g.avg}</b></td><td>${g.high}</td></tr>`).join('')}</table>`).join('')}<div class="sm muted">${medCaption()}</div>`:''}
    ${S.notes?`<h3>Medications / notes</h3><div style="white-space:pre-wrap">${esc(S.notes)}</div>`:''}
    <div class="sm muted" style="margin-top:14px">Self-measured readings; for discussion with your clinician.</div>`;
   const r=drawChart($('#rChart'),{range:S.rrange,show:reportShow()});
@@ -540,6 +580,7 @@ function renderReport(){
 }
 $('#rrangeSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.rrange=+b.dataset.r;saveS();renderReport()};
 $('#rnotesChip').onclick=()=>{S.rnotes=!S.rnotes;saveS();renderReport()};
+$('#rmedsChip').onclick=()=>{S.rmeds=!S.rmeds;saveS();renderReport()};
 /* ---------- PDF report (hand-built, no libraries, nothing leaves the device) ---------- */
 const HELV=[278,278,355,556,556,889,667,191,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,1015,667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,667,778,722,667,611,722,667,944,667,667,611,278,278,278,469,556,333,556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,556,556,333,500,278,556,500,722,500,500,500,334,260,334,584];
 const HELV2={0x85:1000,0x91:222,0x92:222,0x93:333,0x94:333,0x95:350,0x96:556,0x97:1000,0xB7:278};
@@ -653,6 +694,14 @@ function buildReportPdf(M){
   M.months.forEach(m=>{if(y+18>PH-PM-8){newPage();mhead()}y+=13;
     [m.label,m.days,m.avg,m.low,m.high,m.pulse].forEach((v,i)=>T(String(v),cols[i][1],y,{size:9,bold:i===2,align:cols[i][2]==='right'?'right':undefined}));
     y+=4;L(PM,y,PM+CW,y,{w:.4,color:'#e5e5e5'})});
+  if(S.rmeds&&M.med.length){heading('Medication log');
+    const mc=[['Group',PM,0],['Days',PM+310,1],['Avg',PM+400,1],['Highest',PM+CW,1]];
+    M.med.forEach(x=>{ensure(92);y+=12;T(x.name,PM,y,{size:9.5,bold:true});
+      y+=11;T(`${fmtDY(x.first)} – ${fmtDY(x.last)} · dose logged ${x.logged} days · no dose logged ${x.notLogged} days`,PM,y,{size:8.5,color:'#666666'});
+      y+=14;mc.forEach(([n,xx,r])=>T(n,xx,y,{size:8,bold:true,color:'#444444',align:r?'right':undefined}));y+=4;L(PM,y,PM+CW,y,{w:.6,color:'#bbbbbb'});
+      x.groups.forEach(g=>{y+=13;[g.label,g.n,g.avg,g.high].forEach((v,i)=>T(String(v),mc[i][1],y,{size:9,bold:i===2,align:mc[i][2]?'right':undefined}));y+=4;L(PM,y,PM+CW,y,{w:.4,color:'#e5e5e5'})});
+      y+=4});
+    para(medCaption(),{size:8,color:'#666666',gap:4})}
   if(S.notes){heading('Medications / notes');para(S.notes,{size:9,color:'#111111',gap:4})}
   y+=6;para('Self-measured readings; for discussion with your clinician.',{size:8,color:'#666666'});
   pages.forEach((p,i)=>{ops=p;T(`Page ${i+1} of ${pages.length}`,PW/2,PH-22,{size:8,color:'#666666',align:'center'})});
@@ -718,6 +767,7 @@ function renderSettings(){
   $('#tSys').value=S.tSys;$('#tDia').value=S.tDia;$('#pname').value=S.name;$('#pnotes').value=S.notes;
   const evs=events.slice().sort((a,b)=>a.date<b.date?-1:1);
   $('#evList').innerHTML=evs.map((e,i)=>`<div class="ev"><span>⚑ ${i+1} · ${esc(e.text)} <span class="muted sm">${fmtShort(keyToT(e.date))} ${e.date.slice(0,4)}</span></span><button class="btn sm sec" data-del="${e.id}">Remove</button></div>`).join('');
+  renderMedList();
   $('#bk').textContent=`${readings.length} readings on ${DAYS.length} days. `+(S.lastBackup?'Last export/backup: '+fmtD(S.lastBackup,true)+'.':'No backup made yet.');
 }
 $('#methodSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.method=b.dataset.m;saveS();renderSettings();toast('Daily value: '+methodName().toLowerCase())};
@@ -824,6 +874,41 @@ $('#impBtn').onclick=()=>$('#impFile').click();
 $('#impFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;startImport(await f.text());e.target.value=''};
 $('#impPaste').onclick=()=>startImport($('#impText').value);
 
+/* ---------- Medication log import ---------- */
+const medLabel=(nm,nick)=>nick||nm.replace(/\s+(oral|tablet|capsule)\b.*$/i,'').trim()||nm;
+function parseMedCsv(text){
+  const rows=splitLines(text.replace(/^\uFEFF/,''));if(rows.length<2)return null;
+  const h=rows[0].map(x=>x.trim().toLowerCase()),iD=h.indexOf('date'),iM=h.indexOf('medication'),iN=h.indexOf('nickname'),iS=h.indexOf('status');
+  if(iD<0||iM<0||iS<0)return null;
+  const by=new Map(),rank={T:3,S:2,N:1};let bad=0;
+  for(let r=1;r<rows.length;r++){const row=rows[r],day=(row[iD]||'').trim().slice(0,10),nm=(row[iM]||'').trim();
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||!nm){bad++;continue}
+    const id=nm.toLowerCase();if(!by.has(id))by.set(id,{id,name:medLabel(nm,iN>=0?(row[iN]||'').trim():''),days:{}});
+    const st=(row[iS]||'').trim().toLowerCase(),c=st==='taken'?'T':st==='skipped'?'S':'N',m=by.get(id);
+    if(!m.days[day]||rank[c]>rank[m.days[day]])m.days[day]=c}
+  return {list:[...by.values()],bad};
+}
+function medSummary(m){const ks=Object.keys(m.days).sort(),t=ks.filter(k=>m.days[k]==='T').length;
+  return `${fmtDY(keyToT(ks[0]))} → ${fmtDY(keyToT(ks[ks.length-1]))} · dose logged ${t} · no dose logged ${ks.length-t}`}
+function startMedImport(text){
+  const res=parseMedCsv(text);
+  if(!res||!res.list.length)return toast('That does not look like a medication CSV');
+  openModal(`<h2>Medication import preview</h2>${res.list.map(m=>`<p><b>${esc(m.name)}</b><br><span class="muted sm">${medSummary(m)}</span></p>`).join('')}
+   <p class="sm muted">${res.bad?res.bad+' rows skipped. ':''}Days already in your log for these medications are updated; nothing else changes.</p>
+   <button class="btn" id="mAdd">Import</button><div style="height:8px"></div><button class="btn sec" id="mCan">Cancel</button>`);
+  $('#mCan').onclick=closeModal;
+  $('#mAdd').onclick=()=>{res.list.forEach(m=>{const ex=medData.list.find(x=>x.id===m.id);if(ex){Object.assign(ex.days,m.days);ex.name=m.name}else medData.list.push({id:m.id,name:m.name,hide:false,days:m.days})});
+    saveM();closeModal();refresh();toast('Medication log imported')};
+}
+function renderMedList(){
+  $('#medList').innerHTML=medData.list.length?medData.list.map(m=>`<div class="ev"><span><b>${esc(m.name)}</b><br><span class="muted sm">${medSummary(m)}</span></span><span class="row"><button class="btn sm sec" data-medhide="${esc(m.id)}">${m.hide?'Hidden':'Shown'}</button><button class="btn sm sec" data-meddel="${esc(m.id)}">Remove</button></span></div>`).join(''):'<div class="sm muted">No medication log imported yet.</div>';
+}
+$('#medBtn').onclick=()=>$('#medFile').click();
+$('#medFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;startMedImport(await f.text());e.target.value=''};
+$('#medList').onclick=e=>{const h=e.target.closest('[data-medhide]'),d=e.target.closest('[data-meddel]');
+  if(h){const m=medData.list.find(x=>x.id===h.dataset.medhide);if(m){m.hide=!m.hide;saveM();renderSettings()}}
+  if(d){const m=medData.list.find(x=>x.id===d.dataset.meddel);if(m&&confirm('Remove the '+m.name+' log from this device? (Your Apple Health data is not affected.)')){medData.list=medData.list.filter(x=>x!==m);saveM();renderSettings()}}};
+
 /* ---------- Export ---------- */
 async function outFile(name,text,type){
   const f=new File([text],name,{type});
@@ -834,15 +919,15 @@ async function outFile(name,text,type){
 const csvq=s=>/[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
 $('#exCsv').onclick=()=>outFile('bp-readings.csv','date,time,systolic,diastolic,pulse,note\n'+readings.slice().sort((a,b)=>a.t-b.t).map(r=>[dkey(r.t),p2(new Date(r.t).getHours())+':'+p2(new Date(r.t).getMinutes()),r.s,r.d,r.p||'',csvq(r.n||'')].join(',')).join('\n'),'text/csv');
 $('#exDaily').onclick=()=>outFile('bp-daily-summary.csv','date,readings,avg_sys,avg_dia,lowest_sys,lowest_dia,pulse\n'+DAYS.map(d=>[d.k,d.rs.length,d.avg.s.toFixed(1),d.avg.d.toFixed(1),d.low.s,d.low.d,d.pulse?R(d.pulse):''].join(',')).join('\n'),'text/csv');
-$('#exJson').onclick=()=>outFile('bp-backup-'+dkey(Date.now())+'.json',JSON.stringify({v:1,readings,events,settings:S},null,1),'application/json');
+$('#exJson').onclick=()=>outFile('bp-backup-'+dkey(Date.now())+'.json',JSON.stringify({v:1,readings,events,settings:S,meds:medData},null,1),'application/json');
 $('#rsBtn').onclick=()=>$('#rsFile').click();
 $('#rsFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;
   try{const j=JSON.parse(await f.text());if(!Array.isArray(j.readings))throw 0;
     if(!confirm('Replace current data with the backup ('+j.readings.length+' readings)?'))return;
-    readings=j.readings;events=j.events||[];if(j.settings)S=Object.assign(S,j.settings);S.show=Object.assign({all:true,avg:true,low:false,trend:true,notes:false},S.show||{});saveR();saveE();saveS();refresh();toast('Restored')}
+    readings=j.readings;events=j.events||[];if(j.meds&&Array.isArray(j.meds.list))medData=j.meds;if(j.settings)S=Object.assign(S,j.settings);S.show=Object.assign({all:true,avg:true,low:false,trend:true,notes:false,meds:false},S.show||{});saveR();saveE();saveM();saveS();refresh();toast('Restored')}
   catch{toast('That file is not a valid backup')}e.target.value=''};
 $('#wipe').onclick=()=>{if(!confirm('Delete ALL readings, events and settings from this device? This cannot be undone.'))return;if(!confirm('Really delete everything? (Export a backup first if unsure.)'))return;
-  readings=[];events=[];saveR();saveE();refresh();toast('All data deleted')};
+  readings=[];events=[];medData={list:[]};saveR();saveE();saveM();refresh();toast('All data deleted')};
 
 /* ---------- UI helpers ---------- */
 function openModal(h){$('#sheet').innerHTML=h;$('#modal').style.display='flex'}
